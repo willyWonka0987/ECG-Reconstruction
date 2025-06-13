@@ -1,0 +1,18 @@
+# Ignore large folders
+data/
+ann128_models/
+ann136_models/
+__pycache__/
+
+# Ignore large files
+*.pkl
+*.h5
+*.keras
+*.npy
+*.csv
+*.log
+
+# System/IDE files
+.DS_Store
+Thumbs.db
+.idea/

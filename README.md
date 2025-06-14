@@ -7,4 +7,3 @@ Artificial neural network models for each lead are used for signal reconstructio
 3. Run the create_data.py file to generate training and testing data in .pkl format 
 4. The ann128.py and ann136.py files are used to train the neural networks 
 5. The file ml_models.py is used to train machine learning models
-6. Till the day I let u go.

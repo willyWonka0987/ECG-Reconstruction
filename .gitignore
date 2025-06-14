@@ -1,7 +1,5 @@
 # Ignore large folders
 data/
-ann128_models/
-ann136_models/
 __pycache__/
 
 # Ignore large files

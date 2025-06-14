@@ -36,12 +36,20 @@ def create_one_hot(train, test):
     n = df_train.shape[0]
 
     features = pd.concat([df_train, df_test])
+    
+    # Force heart_axis to include all expected values
+    categories = list(range(9))  # 0 to 8
+    features['heart_axis'] = pd.Categorical(features['heart_axis'], categories=categories)
+    
+    # Get dummies with all expected columns, drop_first=True gives 8 columns
     heart_axis = pd.get_dummies(features, columns=['heart_axis'], drop_first=True)
 
+    # Select the heart axis one-hot columns only
     ha_and_sc = heart_axis.loc[:, 'heart_axis_1':'heart_axis_8']
     one_hot_train = ha_and_sc.iloc[:n]
     one_hot_test = ha_and_sc.iloc[n:]
     return one_hot_train, one_hot_test
+
 
 
 def main():

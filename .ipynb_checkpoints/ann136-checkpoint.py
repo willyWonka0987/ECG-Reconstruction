@@ -71,7 +71,7 @@ def main():
         # Early learning stop function
         stop_fit = EarlyStopping(monitor='val_loss', min_delta=0.00005, patience=5, restore_best_weights=True)
         # Training
-        history = model.fit([X, one_hot_train], y, batch_size=8192, shuffle=True, epochs=10, validation_split=0.2,
+        history = model.fit([X, one_hot_train], y, batch_size=4096, shuffle=True, epochs=60, validation_split=0.2,
                             callbacks=[stop_fit])
         # Saving training data
         history_dict[lead] = history.history

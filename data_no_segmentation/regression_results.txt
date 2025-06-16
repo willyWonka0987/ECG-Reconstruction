@@ -1,0 +1,35 @@
+Model for Lead II:
+  [VAL]  RMSE: 0.2434, R2: 0.5039, Pearson Corr: 0.5810
+  [TEST] RMSE: 0.2335, R2: 0.5028, Pearson Corr: 0.5819
+  Model saved to: regression_models/model_predict_II.keras
+
+Model for Lead V1:
+  [VAL]  RMSE: 0.3611, R2: 0.5657, Pearson Corr: 0.6923
+  [TEST] RMSE: 0.3562, R2: 0.5595, Pearson Corr: 0.6825
+  Model saved to: regression_models/model_predict_V1.keras
+
+Model for Lead V2:
+  [VAL]  RMSE: 0.3635, R2: 0.4998, Pearson Corr: 0.5614
+  [TEST] RMSE: 0.3486, R2: 0.5024, Pearson Corr: 0.5681
+  Model saved to: regression_models/model_predict_V2.keras
+
+Model for Lead V3:
+  [VAL]  RMSE: 0.3454, R2: 0.5050, Pearson Corr: 0.5810
+  [TEST] RMSE: 0.3449, R2: 0.5063, Pearson Corr: 0.5832
+  Model saved to: regression_models/model_predict_V3.keras
+
+Model for Lead V4:
+  [VAL]  RMSE: 0.2943, R2: 0.5154, Pearson Corr: 0.6133
+  [TEST] RMSE: 0.2902, R2: 0.5119, Pearson Corr: 0.6146
+  Model saved to: regression_models/model_predict_V4.keras
+
+Model for Lead V5:
+  [VAL]  RMSE: 0.2307, R2: 0.5624, Pearson Corr: 0.6781
+  [TEST] RMSE: 0.2210, R2: 0.5561, Pearson Corr: 0.6709
+  Model saved to: regression_models/model_predict_V5.keras
+
+Model for Lead V6:
+  [VAL]  RMSE: 0.1967, R2: 0.5541, Pearson Corr: 0.6843
+  [TEST] RMSE: 0.1862, R2: 0.5446, Pearson Corr: 0.6797
+  Model saved to: regression_models/model_predict_V6.keras
+

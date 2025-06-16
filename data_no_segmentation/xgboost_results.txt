@@ -1,0 +1,49 @@
+Model for Lead II:
+  Test MSE: 0.0557
+  Test RMSE: 0.2360
+  Test R2 Score: 0.5084
+  Pearson Corr (avg over 6 dims): 0.5856
+  Model saved to: xgboost_models/model_predict_II.json
+
+Model for Lead V1:
+  Test MSE: 0.1299
+  Test RMSE: 0.3605
+  Test R2 Score: 0.5544
+  Pearson Corr (avg over 6 dims): 0.6750
+  Model saved to: xgboost_models/model_predict_V1.json
+
+Model for Lead V2:
+  Test MSE: 0.1242
+  Test RMSE: 0.3524
+  Test R2 Score: 0.4919
+  Pearson Corr (avg over 6 dims): 0.5618
+  Model saved to: xgboost_models/model_predict_V2.json
+
+Model for Lead V3:
+  Test MSE: 0.1220
+  Test RMSE: 0.3492
+  Test R2 Score: 0.4995
+  Pearson Corr (avg over 6 dims): 0.5796
+  Model saved to: xgboost_models/model_predict_V3.json
+
+Model for Lead V4:
+  Test MSE: 0.0866
+  Test RMSE: 0.2942
+  Test R2 Score: 0.5156
+  Pearson Corr (avg over 6 dims): 0.6078
+  Model saved to: xgboost_models/model_predict_V4.json
+
+Model for Lead V5:
+  Test MSE: 0.0503
+  Test RMSE: 0.2244
+  Test R2 Score: 0.5494
+  Pearson Corr (avg over 6 dims): 0.6638
+  Model saved to: xgboost_models/model_predict_V5.json
+
+Model for Lead V6:
+  Test MSE: 0.0354
+  Test RMSE: 0.1881
+  Test R2 Score: 0.5599
+  Pearson Corr (avg over 6 dims): 0.6787
+  Model saved to: xgboost_models/model_predict_V6.json
+

@@ -1,35 +1,35 @@
 Model for Lead II:
-  [VAL]  RMSE: 0.2434, R2: 0.5039, Pearson Corr: 0.5810
-  [TEST] RMSE: 0.2335, R2: 0.5028, Pearson Corr: 0.5819
+  [VAL]  RMSE: 0.2430, R2: 0.5089, Pearson Corr: 0.5813
+  [TEST] RMSE: 0.2327, R2: 0.5079, Pearson Corr: 0.5780
   Model saved to: regression_models/model_predict_II.keras
 
 Model for Lead V1:
-  [VAL]  RMSE: 0.3611, R2: 0.5657, Pearson Corr: 0.6923
-  [TEST] RMSE: 0.3562, R2: 0.5595, Pearson Corr: 0.6825
+  [VAL]  RMSE: 0.3611, R2: 0.5595, Pearson Corr: 0.6903
+  [TEST] RMSE: 0.3563, R2: 0.5486, Pearson Corr: 0.6802
   Model saved to: regression_models/model_predict_V1.keras
 
 Model for Lead V2:
-  [VAL]  RMSE: 0.3635, R2: 0.4998, Pearson Corr: 0.5614
-  [TEST] RMSE: 0.3486, R2: 0.5024, Pearson Corr: 0.5681
+  [VAL]  RMSE: 0.3645, R2: 0.4977, Pearson Corr: 0.5567
+  [TEST] RMSE: 0.3490, R2: 0.5009, Pearson Corr: 0.5582
   Model saved to: regression_models/model_predict_V2.keras
 
 Model for Lead V3:
-  [VAL]  RMSE: 0.3454, R2: 0.5050, Pearson Corr: 0.5810
-  [TEST] RMSE: 0.3449, R2: 0.5063, Pearson Corr: 0.5832
+  [VAL]  RMSE: 0.3462, R2: 0.5007, Pearson Corr: 0.5657
+  [TEST] RMSE: 0.3454, R2: 0.5020, Pearson Corr: 0.5672
   Model saved to: regression_models/model_predict_V3.keras
 
 Model for Lead V4:
-  [VAL]  RMSE: 0.2943, R2: 0.5154, Pearson Corr: 0.6133
-  [TEST] RMSE: 0.2902, R2: 0.5119, Pearson Corr: 0.6146
+  [VAL]  RMSE: 0.2948, R2: 0.5176, Pearson Corr: 0.6055
+  [TEST] RMSE: 0.2912, R2: 0.5174, Pearson Corr: 0.6072
   Model saved to: regression_models/model_predict_V4.keras
 
 Model for Lead V5:
-  [VAL]  RMSE: 0.2307, R2: 0.5624, Pearson Corr: 0.6781
-  [TEST] RMSE: 0.2210, R2: 0.5561, Pearson Corr: 0.6709
+  [VAL]  RMSE: 0.2304, R2: 0.5566, Pearson Corr: 0.6734
+  [TEST] RMSE: 0.2210, R2: 0.5515, Pearson Corr: 0.6663
   Model saved to: regression_models/model_predict_V5.keras
 
 Model for Lead V6:
-  [VAL]  RMSE: 0.1967, R2: 0.5541, Pearson Corr: 0.6843
-  [TEST] RMSE: 0.1862, R2: 0.5446, Pearson Corr: 0.6797
+  [VAL]  RMSE: 0.1956, R2: 0.5555, Pearson Corr: 0.6867
+  [TEST] RMSE: 0.1856, R2: 0.5487, Pearson Corr: 0.6824
   Model saved to: regression_models/model_predict_V6.keras
 

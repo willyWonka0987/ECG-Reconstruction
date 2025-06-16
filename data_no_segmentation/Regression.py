@@ -55,8 +55,9 @@ with open("regression_results.txt", "w") as f:
         # Build model
         model = Sequential([
             Input(shape=(6,)),
-            Dense(64, activation='relu'),
-            Dense(64, activation='relu'),
+            Dense(256, activation='relu'),
+            Dense(256, activation='relu'),
+            Dense(256, activation='relu'),
             Dense(6)
         ])
         model.compile(optimizer='adam', loss='mse', metrics=['mae'])

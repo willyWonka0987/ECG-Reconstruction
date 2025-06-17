@@ -10,7 +10,7 @@ from xgboost import XGBRegressor
 os.makedirs("xgb_test_plots", exist_ok=True)
 
 # Load ECG segments
-segments = joblib.load("qrs_test_segments.pkl")
+segments = joblib.load("QRS_Segments/qrs_test_segments.pkl")
 
 # Lead names and target indices
 lead_names = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']

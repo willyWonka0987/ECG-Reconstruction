@@ -10,8 +10,8 @@ from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.callbacks import EarlyStopping
 
 # Load QRS segments
-train_segments = joblib.load("qrs_train_segments.pkl")
-test_segments = joblib.load("qrs_test_segments.pkl")
+train_segments = joblib.load("QRS_Segments/qrs_train_segments.pkl")
+test_segments = joblib.load("QRS_Segments/qrs_test_segments.pkl")
 
 lead_names = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
 input_lead_idx = 0  # Lead I

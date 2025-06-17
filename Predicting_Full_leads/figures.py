@@ -5,7 +5,7 @@ import seaborn as sns
 
 
 ROOT = Path(__file__).cwd()
-DB_CSV_PATH = ROOT.joinpath('csv_files')
+DB_CSV_PATH = ROOT.joinpath('../csv_files')
 df = pd.read_csv(DB_CSV_PATH.joinpath('data_base.csv'), index_col='ecg_id')
 
 

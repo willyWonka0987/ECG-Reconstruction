@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 ROOT = Path(__file__).parent
-DB_CSV_PATH = ROOT.joinpath('csv_files')
+DB_CSV_PATH = ROOT.joinpath('../csv_files')
 
 f_lst = ['ecg_id', 'superclasses', 'heart_axis']
 leads = list(range(12))

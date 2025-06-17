@@ -14,7 +14,7 @@ lead_names = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5
 os.makedirs("QRS_plots", exist_ok=True)
 
 # Load ECG dataset
-ecg_data = joblib.load("ecg_train_clean.pkl")
+ecg_data = joblib.load("data_no_segmentation/ecg_train_clean.pkl")
 
 # --- Q and S detection function ---
 def find_qs_minima(signal, r_peaks, pre_window, post_window, sampling_rate):

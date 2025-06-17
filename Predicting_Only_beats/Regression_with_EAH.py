@@ -10,12 +10,12 @@ from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.callbacks import EarlyStopping
 
 # Load QRS segments
-train_segments = joblib.load("qrs_train_segments.pkl")
-test_segments = joblib.load("qrs_test_segments.pkl")
+train_segments = joblib.load("QRS_Segments/qrs_train_segments.pkl")
+test_segments = joblib.load("QRS_Segments/qrs_test_segments.pkl")
 
 # Load heart axis metadata (same order as segments)
-features_train = joblib.load("../data/features_train_clean.pkl")
-features_test = joblib.load("../data/features_test_clean.pkl")
+features_train = joblib.load("../Predicting_Full_leads/data/features_train_clean.pkl")
+features_test = joblib.load("../Predicting_Full_leads/data/features_test_clean.pkl")
 
 # One-hot encode heart axis
 def create_one_hot(train, test):

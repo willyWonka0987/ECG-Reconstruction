@@ -6,7 +6,7 @@ from utils import dict_pars_scp, dict_pars_prob, calculate_heart_r
 # Root directory
 ROOT = Path(__file__).cwd()
 # PTB-XL database directory
-DB_CSV_PATH = ROOT.joinpath('csv_files')
+DB_CSV_PATH = ROOT.joinpath('../csv_files')
 
 
 # Creating a dictionary with the superclass feature

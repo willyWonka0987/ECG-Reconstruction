@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import neurokit2 as nk
 
 # Load the first cleaned ECG
-ecg_data = joblib.load("ecg_train_clean.pkl")
+ecg_data = joblib.load("data_no_segmentation/ecg_train_clean.pkl")
 first_ecg = ecg_data[0]  # Shape: (1000, 12)
 
 # Leads to keep: I, II, V1–V6 → indexes: 0, 1, 6, 7, 8, 9, 10, 11

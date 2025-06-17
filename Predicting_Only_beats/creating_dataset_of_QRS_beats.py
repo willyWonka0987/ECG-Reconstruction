@@ -90,8 +90,8 @@ def remove_outliers_qrs(all_segments, quantile=0.99):
     return cleaned_segments
 
 # --- Load ECG data ---
-ecg_train_data = joblib.load("ecg_train_clean.pkl")
-ecg_test_data = joblib.load("ecg_test_clean.pkl")
+ecg_train_data = joblib.load("data_no_segmentation/ecg_train_clean.pkl")
+ecg_test_data = joblib.load("data_no_segmentation/ecg_test_clean.pkl")
 
 # --- Extract raw QRS segments ---
 train_segments = extract_qrs_segments(ecg_train_data)
@@ -105,6 +105,6 @@ test_segments_clean = remove_outliers_qrs(test_segments, quantile=0.99)
 joblib.dump(train_segments_clean, "qrs_train_segments.pkl")
 joblib.dump(test_segments_clean, "qrs_test_segments.pkl")
 
-print(f"✅ Cleaned and saved: {len(train_segments_clean)} train segments, {len(test_segments_clean)} test segments")
+print(f"Cleaned and saved: {len(train_segments_clean)} train segments, {len(test_segments_clean)} test segments")
 print(f"Original train: {len(train_segments)}, Cleaned: {len(train_segments_clean)}")
 print(f"Original test:  {len(test_segments)}, Cleaned: {len(test_segments_clean)}")

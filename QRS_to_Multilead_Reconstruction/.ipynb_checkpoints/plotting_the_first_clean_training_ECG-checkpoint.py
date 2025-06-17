@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import joblib
 import os
 
-pkl_path = 'data_no_segmentation/ecg_train_clean.pkl'
+pkl_path = 'ecg_train_clean.pkl'
 
 # Check if the file exists
 if not os.path.exists(pkl_path):

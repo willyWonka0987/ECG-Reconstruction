@@ -1,0 +1,35 @@
+Lead II
+RMSE: 0.1011
+R² Score: 0.0358
+Pearson Correlation: 0.5813
+
+Lead V1
+RMSE: 0.1176
+R² Score: 0.1001
+Pearson Correlation: 0.6909
+
+Lead V2
+RMSE: 0.2066
+R² Score: 0.0525
+Pearson Correlation: 0.6089
+
+Lead V3
+RMSE: 0.2066
+R² Score: 0.0484
+Pearson Correlation: 0.5597
+
+Lead V4
+RMSE: 0.1830
+R² Score: 0.0408
+Pearson Correlation: 0.6020
+
+Lead V5
+RMSE: 0.1442
+R² Score: 0.0627
+Pearson Correlation: 0.6810
+
+Lead V6
+RMSE: 0.1130
+R² Score: 0.0678
+Pearson Correlation: 0.6970
+

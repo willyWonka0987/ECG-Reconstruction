@@ -1,35 +1,35 @@
 CNN Lead II
 RMSE: 0.1005
-R² Score: 0.0413
-Pearson Correlation: 0.5880
+R² Score: 0.0417
+Pearson Correlation: 0.5879
 
 CNN Lead V1
-RMSE: 0.1169
-R² Score: 0.1080
-Pearson Correlation: 0.6951
+RMSE: 0.1170
+R² Score: 0.1076
+Pearson Correlation: 0.6947
 
 CNN Lead V2
-RMSE: 0.2054
-R² Score: 0.0610
-Pearson Correlation: 0.6150
+RMSE: 0.2051
+R² Score: 0.0618
+Pearson Correlation: 0.6164
 
 CNN Lead V3
-RMSE: 0.2056
-R² Score: 0.0513
-Pearson Correlation: 0.5657
+RMSE: 0.2055
+R² Score: 0.0533
+Pearson Correlation: 0.5660
 
 CNN Lead V4
 RMSE: 0.1816
-R² Score: 0.0507
-Pearson Correlation: 0.6102
+R² Score: 0.0472
+Pearson Correlation: 0.6098
 
 CNN Lead V5
-RMSE: 0.1436
-R² Score: 0.0663
-Pearson Correlation: 0.6847
+RMSE: 0.1434
+R² Score: 0.0656
+Pearson Correlation: 0.6856
 
 CNN Lead V6
 RMSE: 0.1127
-R² Score: 0.0715
-Pearson Correlation: 0.6986
+R² Score: 0.0735
+Pearson Correlation: 0.6989
 

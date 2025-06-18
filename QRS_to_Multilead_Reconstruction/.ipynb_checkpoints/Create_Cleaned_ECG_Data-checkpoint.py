@@ -8,24 +8,29 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tqdm import tqdm  # <- NEW
 
-ROOT = Path(__file__).parent
-DB_CSV_PATH = ROOT.joinpath('csv_files')
+# --- Setup ---
+ROOT = Path(__file__).parent.resolve()
+DB_CSV_PATH = (ROOT.parent / 'csv_files' / 'data_base.csv').resolve()
 
 f_lst = ['ecg_id', 'superclasses', 'heart_axis']
-leads = list(range(12))
+leads = list(range(12))  # 12-lead ECG
 cols = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
 
 
+# --- Helper Functions ---
 def get_df(data_frame):
     data_frame['heart_axis'] = data_frame['heart_axis'].fillna('NOT')
     data_frame['superclasses'] = data_frame['superclasses'].fillna('NOT')
     data_frame = data_frame.fillna(0)
     data_frame = data_frame[data_frame['hr'] != 0]
-    df_clean = data_frame[(data_frame['electrodes_problems'] == 0) &
-                          (data_frame['pacemaker'] == 0) &
-                          (data_frame['burst_noise'] == 0) &
-                          (data_frame['static_noise'] == 0)]
+    df_clean = data_frame[
+        (data_frame['electrodes_problems'] == 0) &
+        (data_frame['pacemaker'] == 0) &
+        (data_frame['burst_noise'] == 0) &
+        (data_frame['static_noise'] == 0)
+    ]
     return df_clean[['ecg_id', 'superclasses', 'heart_axis', 'filename_lr']]
 
 
@@ -45,44 +50,44 @@ def save_img_minmax(data_frame, name='train'):
     plt.xlabel('Amplitude, mV')
     plt.ylabel('Leads')
     plt.savefig(Path('images').joinpath(f'{name}_minmax.jpg'), bbox_inches='tight', dpi=600)
+    plt.close()
 
 
+# --- Main ---
 if __name__ == '__main__':
-    # === Load and Clean CSV ===
-    df = pd.read_csv(DB_CSV_PATH.joinpath('data_base.csv'))
+    print("🔍 Loading database CSV...")
+    df = pd.read_csv(DB_CSV_PATH)
     df_cut = get_df(df)
     df_cut = create_labels(df_cut, 'heart_axis')
     df_cut = create_labels(df_cut, 'superclasses')
 
     train, test = train_test_split(df_cut, shuffle=True, test_size=0.2, random_state=10)
 
-    # === Process Training Data ===
-    print("Generating and collecting train ECGs...")
+    print("🧠 Generating train ECGs (no segmentation)...")
     ecg_train_list = []
     features_train_list = []
 
-    for _, row in train.iterrows():
-        ecg, features = get_ecg(pd.DataFrame([row]), leads, 128, f_lst)
+    for _, row in tqdm(train.iterrows(), total=len(train), desc="Train ECGs"):
+        ecg, features = get_ecg(pd.DataFrame([row]), leads, 1000, f_lst)  # 100 Hz, full 10s
         ecg_train_list.append(ecg)
         features_train_list.append(features)
 
     ecg_train = np.vstack(ecg_train_list)
     features_train = np.vstack(features_train_list)
 
-    # === Process Test Data ===
-    print("Generating and collecting test ECGs...")
+    print("🧠 Generating test ECGs (no segmentation)...")
     ecg_test_list = []
     features_test_list = []
 
-    for _, row in test.iterrows():
-        ecg, features = get_ecg(pd.DataFrame([row]), leads, 128, f_lst)
+    for _, row in tqdm(test.iterrows(), total=len(test), desc="Test ECGs"):
+        ecg, features = get_ecg(pd.DataFrame([row]), leads, 1000, f_lst)  # 100 Hz
         ecg_test_list.append(ecg)
         features_test_list.append(features)
 
     ecg_test = np.vstack(ecg_test_list)
     features_test = np.vstack(features_test_list)
 
-    # === Min-Max Analysis + Cleaning ===
+    print("📉 Calculating min/max statistics...")
     minmax_train = get_minmax(ecg_train)
     minmax_test = get_minmax(ecg_test)
 
@@ -92,6 +97,7 @@ if __name__ == '__main__':
     save_img_minmax(df_minmax_train, name='train')
     save_img_minmax(df_minmax_test, name='test')
 
+    print("🧹 Filtering outliers (99% quantile)...")
     for i in cols:
         df_minmax_train = df_minmax_train[df_minmax_train[i] < df_minmax_train[i].quantile(0.99)]
         df_minmax_test = df_minmax_test[df_minmax_test[i] < df_minmax_test[i].quantile(0.99)]
@@ -99,7 +105,6 @@ if __name__ == '__main__':
     save_img_minmax(df_minmax_train, name='train_clean')
     save_img_minmax(df_minmax_test, name='test_clean')
 
-    # === Final Cleaned Datasets ===
     indx_train = df_minmax_train.index
     indx_test = df_minmax_test.index
 
@@ -109,7 +114,7 @@ if __name__ == '__main__':
     features_test_clean = features_test[indx_test]
 
     print("💾 Saving final .pkl cleaned files...")
-    data_dir = ROOT / 'data_no_aug'
+    data_dir = ROOT / 'data_no_segmentation'
     data_dir.mkdir(parents=True, exist_ok=True)
 
     save_data(ecg_train_clean, data_dir / 'ecg_train_clean.pkl')
@@ -117,4 +122,4 @@ if __name__ == '__main__':
     save_data(ecg_test_clean, data_dir / 'ecg_test_clean.pkl')
     save_data(features_test_clean, data_dir / 'features_test_clean.pkl')
 
-    print("✅ Done. All cleaned datasets saved (without augmentation).")
+    print("✅ Done. All cleaned datasets saved (10s ECGs, 100Hz, no segmentation).")

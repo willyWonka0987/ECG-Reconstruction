@@ -17,7 +17,7 @@ from scipy.stats import pearsonr
 leads_to_predict = ['II', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
 model_dir = Path("QRS_Triplet_Input_and_FullBeat_Target/NN_models")
 plot_dir = Path("QRS_Triplet_Input_and_FullBeat_Target/NN_first_segment_plots")
-metrics_file = Path("QRS_Triplet_Input_and_FullBeat_Target/individual_model_metrics.txt")
+metrics_file = Path("QRS_Triplet_Input_and_FullBeat_Target/NN_individual_model_metrics.txt")
 model_dir.mkdir(parents=True, exist_ok=True)
 plot_dir.mkdir(parents=True, exist_ok=True)
 

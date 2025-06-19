@@ -40,32 +40,67 @@ def build_combined_dataset(ecg_dataset, meta_df):
         age = row_meta["age"]
         sex = row_meta["sex"]
         heart_axis = row_meta.get("heart_axis", 0)
-        lead_i = sample[:, 0]
-        cleaned = nk.ecg_clean(lead_i, sampling_rate=sampling_rate)
-        r_peaks = nk.ecg_peaks(cleaned, sampling_rate=sampling_rate)[1]['ECG_R_Peaks']
-        q_peaks, s_peaks = find_qs_minima(cleaned, r_peaks)
+        hr = row_meta.get("hr", 0)
 
-        for j, r in enumerate(r_peaks):
-            q, s = q_peaks[j], s_peaks[j]
+        # Lead I processing
+        lead_i = sample[:, 0]
+        cleaned_i = nk.ecg_clean(lead_i, sampling_rate=sampling_rate)
+        r_peaks_i = nk.ecg_peaks(cleaned_i, sampling_rate=sampling_rate)[1]['ECG_R_Peaks']
+        q_peaks_i, s_peaks_i = find_qs_minima(cleaned_i, r_peaks_i)
+
+        # Lead II processing
+        lead_ii = sample[:, 1]
+        cleaned_ii = nk.ecg_clean(lead_ii, sampling_rate=sampling_rate)
+        r_peaks_ii_data = nk.ecg_peaks(cleaned_ii, sampling_rate=sampling_rate)
+        
+        # Handle case where no R-peaks are found in lead II
+        if 'ECG_R_Peaks' not in r_peaks_ii_data[1] or len(r_peaks_ii_data[1]['ECG_R_Peaks']) == 0:
+            continue  # Skip this sample if no R-peaks in lead II
+            
+        r_peaks_ii = r_peaks_ii_data[1]['ECG_R_Peaks']
+        q_peaks_ii, s_peaks_ii = find_qs_minima(cleaned_ii, r_peaks_ii)
+
+        # Process each R-peak
+        for j, r in enumerate(r_peaks_i):
+            q_i, s_i = q_peaks_i[j], s_peaks_i[j]
+            
+            # Find closest R-peak in lead II (with safety check)
+            if len(r_peaks_ii) > 0:
+                r_ii_idx = np.argmin(np.abs(r_peaks_ii - r))
+                r_ii = r_peaks_ii[r_ii_idx]
+                q_ii, s_ii = q_peaks_ii[r_ii_idx], s_peaks_ii[r_ii_idx]
+            else:
+                continue  # Skip if no R-peaks in lead II
+
             start, end = r - padding, r + padding
-            if (start >= 0 and end <= sample.shape[0]) and (q != r and s != r):
+            if (start >= 0 and end <= sample.shape[0]) and (q_i != r and s_i != r and q_ii != r_ii and s_ii != r_ii):
                 qrs_lead_i = [
-                    (q / sampling_rate, lead_i[q]),
+                    (q_i / sampling_rate, lead_i[q_i]),
                     (r / sampling_rate, lead_i[r]),
-                    (s / sampling_rate, lead_i[s])
+                    (s_i / sampling_rate, lead_i[s_i])
+                ]
+                qrs_lead_ii = [
+                    (q_ii / sampling_rate, lead_ii[q_ii]),
+                    (r_ii / sampling_rate, lead_ii[r_ii]),
+                    (s_ii / sampling_rate, lead_ii[s_ii])
                 ]
                 other_leads_waveforms = {
-                    lead_names[k]: sample[start:end, k] for k in range(12) if k != 0
+                    lead_names[k]: sample[start:end, k] for k in range(12) if k not in [0, 1]
                 }
                 final_dataset.append({
-			"qrs_lead_I": qrs_lead_i,
-			"other_leads": other_leads_waveforms,
-			"age": age,
-			"sex": sex,
-			"heart_axis": heart_axis,
-			"source_index": i
-		    })
+                    "qrs_lead_I": qrs_lead_i,
+                    "qrs_lead_II": qrs_lead_ii,
+                    "other_leads": other_leads_waveforms,
+                    "age": age,
+                    "sex": sex,
+                    "heart_axis": heart_axis,
+                    "hr": hr,
+                    "source_index": i
+                })
     return final_dataset
+
+
+
 
 train_data = joblib.load(input_train_path)
 test_data = joblib.load(input_test_path)

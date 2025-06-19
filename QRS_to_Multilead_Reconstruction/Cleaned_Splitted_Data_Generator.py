@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 ROOT = Path(__file__).parent.resolve()
 DB_CSV_PATH = (ROOT.parent / 'csv_files' / 'data_base.csv').resolve()
-f_lst = ['ecg_id', 'superclasses', 'heart_axis']
+f_lst = ['ecg_id', 'superclasses', 'heart_axis', 'hr']  # ADDED 'hr' HERE
 leads = list(range(12))
 cols = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
 
@@ -24,7 +24,8 @@ def get_df(data_frame):
                           (data_frame['pacemaker'] == 0) &
                           (data_frame['burst_noise'] == 0) &
                           (data_frame['static_noise'] == 0)]
-    return df_clean[['ecg_id', 'superclasses', 'heart_axis', 'filename_lr', 'age', 'sex']]
+    # ADDED 'hr' TO RETURNED COLUMNS
+    return df_clean[['ecg_id', 'superclasses', 'heart_axis', 'filename_lr', 'age', 'sex', 'hr']]
 
 def create_labels(data_frame, column_name):
     label_encoder = LabelEncoder()
@@ -98,3 +99,4 @@ if __name__ == '__main__':
     save_data(features_train_clean, data_dir / 'features_train_clean.pkl')
     save_data(ecg_test_clean, data_dir / 'ecg_test_clean.pkl')
     save_data(features_test_clean, data_dir / 'features_test_clean.pkl')
+

@@ -1,8 +1,5 @@
-# ------------------------------
-# ✅ FILE 3: train_cnn_with_qrs_and_meta.py
-# ------------------------------
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use('Agg')  # Use non-interactive backend for saving plots
 
 import matplotlib.pyplot as plt
 import joblib
@@ -10,12 +7,13 @@ import numpy as np
 from pathlib import Path
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Input, BatchNormalization, Concatenate, Flatten
+from tensorflow.keras.layers import Dense, Dropout, Input, BatchNormalization, Conv1D, GlobalAveragePooling1D
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Add, Activation
 
 # --- Config ---
 leads_to_predict = ['II', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
@@ -43,27 +41,68 @@ def extract_features_and_targets(data, target_lead):
 
             age = seg.get("age", 0)
             sex = 1 if str(seg.get("sex", "M")).upper().startswith("M") else 0
+            heart_axis = seg.get("heart_axis", 0)
+            if isinstance(heart_axis, str):
+                heart_axis = int(heart_axis) if heart_axis.isdigit() else 0
 
-            features = [tq, aq, tr, ar, ts, as_, rq_interval, sr_interval, age, sex]
+            features = [tq, aq, tr, ar, ts, as_, rq_interval, sr_interval, age, sex, heart_axis]
             target = seg['other_leads'][target_lead]
             if len(target) == 128:
                 X.append(features)
                 y.append(target)
         except Exception as e:
             continue
-    return np.array(X), np.array(y)
+    X = np.array(X)
+    y = np.array(y)
+    return X[..., np.newaxis], y
 
-def build_dense_model(input_dim):
-    inp = Input(shape=(input_dim,))
-    x = Dense(64, activation='relu')(inp)
+
+
+def conv_block(x, filters, kernel_size=3, dropout_rate=0.3):
+    shortcut = x
+    x = Conv1D(filters, kernel_size, padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Dropout(dropout_rate)(x)
+    
+    x = Conv1D(filters, kernel_size, padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Add()([x, shortcut])  # Residual connection
+    x = Activation('relu')(x)
+    return x
+
+def build_deeper_cnn_model(input_shape):
+    inp = Input(shape=input_shape)  # shape = (11, 1)
+
+    x = Conv1D(64, kernel_size=3, activation='relu', padding='same')(inp)
     x = BatchNormalization()(x)
     x = Dropout(0.3)(x)
-    x = Dense(128, activation='relu')(x)
+
+    # Add 2 residual conv blocks
+    x = conv_block(x, 64)
+    x = conv_block(x, 64)
+
+    x = Conv1D(128, kernel_size=3, activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Dropout(0.3)(x)
+
+    x = Conv1D(256, kernel_size=3, activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+
+    x = GlobalAveragePooling1D()(x)
+
+    # Dense layers
+    x = Dense(512, activation='relu')(x)
+    x = Dropout(0.4)(x)
+    x = Dense(256, activation='relu')(x)
     x = Dropout(0.3)(x)
     out = Dense(128, activation='linear')(x)
+
     model = Model(inputs=inp, outputs=out)
-    model.compile(optimizer=tf.keras.optimizers.Adam(0.001), loss='mse', metrics=['mae'])
+    model.compile(optimizer=tf.keras.optimizers.Adam(0.0003), loss='mse', metrics=['mae'])
     return model
+
+
 
 def plot_prediction(y_true, y_pred, lead_name, save_path):
     plt.figure(figsize=(10, 4))
@@ -72,6 +111,19 @@ def plot_prediction(y_true, y_pred, lead_name, save_path):
     plt.title(f"Lead {lead_name}: Actual vs Predicted")
     plt.xlabel("Time (samples)")
     plt.ylabel("Amplitude")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+
+def plot_loss_curve(history, lead_name, save_path):
+    plt.figure(figsize=(8, 4))
+    plt.plot(history.history['loss'], label='Train Loss')
+    plt.plot(history.history['val_loss'], label='Val Loss')
+    plt.title(f"Loss Curve for Lead {lead_name}")
+    plt.xlabel("Epoch")
+    plt.ylabel("MSE Loss")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -87,20 +139,20 @@ with open(metrics_file, 'w') as f:
         X_test, y_test = extract_features_and_targets(test_data, lead)
 
         scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
+        X_train_2d = scaler.fit_transform(X_train.squeeze()).reshape(X_train.shape)
+        X_test_2d = scaler.transform(X_test.squeeze()).reshape(X_test.shape)
 
-        model = build_dense_model(X_train.shape[1])
+        model = build_deeper_cnn_model(input_shape=(X_train.shape[1], 1))
 
         history = model.fit(
-            X_train, y_train,
+            X_train_2d, y_train,
             validation_split=0.1,
             epochs=100,
             batch_size=64,
             callbacks=[
                 EarlyStopping(patience=15, restore_best_weights=True),
                 ModelCheckpoint(
-                    filepath=model_dir / f"dense_model_lead_{lead}.h5",
+                    filepath=model_dir / f"cnn_1d_model_lead_{lead}.h5",
                     save_best_only=True,
                     monitor='val_loss'
                 )
@@ -108,7 +160,7 @@ with open(metrics_file, 'w') as f:
             verbose=1
         )
 
-        y_pred = model.predict(X_test)
+        y_pred = model.predict(X_test_2d)
 
         rmse = np.sqrt(mean_squared_error(y_test, y_pred))
         r2 = r2_score(y_test, y_pred)
@@ -128,4 +180,11 @@ with open(metrics_file, 'w') as f:
             save_path=plot_dir / f"lead_{lead}_prediction.png"
         )
 
+        plot_loss_curve(
+            history,
+            lead_name=lead,
+            save_path=plot_dir / f"lead_{lead}_loss_curve.png"
+        )
+
 print("\n🎉 All models trained, metrics saved, and plots generated.")
+

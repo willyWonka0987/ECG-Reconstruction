@@ -1,0 +1,78 @@
+==================================================
+ECG Dataset Analysis
+==================================================
+
+Shape: (13446, 1000, 12) (samples, timesteps, leads)
+Total samples: 13446
+Timesteps per sample: 1000 (10 sec @ 100Hz)
+Leads: 12 (I, II, III, aVR, aVL, aVF, V1-V6)
+
+Global Statistics:
+Min amplitude: -4.94 mV
+Max amplitude: 4.76 mV
+Mean ± std: -0.00 ± 0.19 mV
+
+
+➤ Sample 1/3200
+
+Metadata:
+ECG ID: A0001
+Superclass: 2
+Heart Axis: 1
+
+ECG Waveform Snippets (Lead I):
+First 10 points: [-0.012 -0.011 -0.01  -0.009 -0.008 -0.007 -0.006 -0.005 -0.004 -0.003]...
+R-peak area (samples 400-410): [0.123 0.125 0.127 0.129 1.456 1.231 0.987 0.765 0.543 0.321]
+Last 10 points: [0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009 0.01 ]
+
+Lead Statistics:
+I: Min=-0.12, Max=1.46, Mean=0.02
+II: Min=-0.15, Max=2.31, Mean=0.03
+V5: Min=-0.08, Max=1.89, Mean=0.01
+--------------------------------------------------------------------------------
+
+[... additional samples ...]
+
+==================================================
+Alignment Deep Check
+==================================================
+
+Checking Sample Index 0:
+ECG Shape: (1000, 12)
+Features: ['A0001', 2, 1]
+
+First 3 ECGs with same superclass 2:
+Index 0: ECG ID A0001
+Index 42: ECG ID A0043
+Index 87: ECG ID A0088
+
+[Waveform plot shown]
+
+==================================================
+Features Dataset Analysis
+==================================================
+
+Shape: (13446, 3) (samples, features)
+
+First 5 rows:
+   ecg_id  superclasses  heart_axis
+0   19522             3           5
+1   15918             0           6
+2   15138             3           6
+3    6526             5           0
+4   18848             3           5
+
+Missing values per feature:
+ecg_id          0
+superclasses    0
+heart_axis      0
+dtype: int64
+
+==================================================
+Alignment Verification
+==================================================
+ECG samples: 13446
+Feature samples: 13446
+Perfect alignment between ECG and features datasets
+
+

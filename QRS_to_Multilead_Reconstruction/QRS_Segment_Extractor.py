@@ -39,6 +39,7 @@ def build_combined_dataset(ecg_dataset, meta_df):
         row_meta = meta_df.iloc[i]
         age = row_meta["age"]
         sex = row_meta["sex"]
+        heart_axis = row_meta.get("heart_axis", 0)
         lead_i = sample[:, 0]
         cleaned = nk.ecg_clean(lead_i, sampling_rate=sampling_rate)
         r_peaks = nk.ecg_peaks(cleaned, sampling_rate=sampling_rate)[1]['ECG_R_Peaks']
@@ -57,12 +58,13 @@ def build_combined_dataset(ecg_dataset, meta_df):
                     lead_names[k]: sample[start:end, k] for k in range(12) if k != 0
                 }
                 final_dataset.append({
-                    "qrs_lead_I": qrs_lead_i,
-                    "other_leads": other_leads_waveforms,
-                    "age": age,
-                    "sex": sex,
-                    "source_index": i
-                })
+			"qrs_lead_I": qrs_lead_i,
+			"other_leads": other_leads_waveforms,
+			"age": age,
+			"sex": sex,
+			"heart_axis": heart_axis,
+			"source_index": i
+		    })
     return final_dataset
 
 train_data = joblib.load(input_train_path)

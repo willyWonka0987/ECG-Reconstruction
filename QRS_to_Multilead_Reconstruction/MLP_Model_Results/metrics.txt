@@ -1,30 +1,30 @@
 Lead V1
-RMSE: 0.1210
-R^2: 0.1688
-Pearson Correlation: 0.7049
+RMSE: 0.1020
+R^2: 0.2669
+Pearson Correlation: 0.8349
 
 Lead V2
-RMSE: 0.2117
-R^2: 0.1411
-Pearson Correlation: 0.6334
+RMSE: 0.1958
+R^2: 0.2117
+Pearson Correlation: 0.7453
 
 Lead V3
-RMSE: 0.2116
-R^2: 0.1580
-Pearson Correlation: 0.5990
+RMSE: 0.1995
+R^2: 0.2467
+Pearson Correlation: 0.7082
 
 Lead V4
-RMSE: 0.1781
-R^2: 0.1821
-Pearson Correlation: 0.6647
+RMSE: 0.1624
+R^2: 0.2830
+Pearson Correlation: 0.7786
 
 Lead V5
-RMSE: 0.1371
-R^2: 0.2299
-Pearson Correlation: 0.7399
+RMSE: 0.1148
+R^2: 0.3554
+Pearson Correlation: 0.8579
 
 Lead V6
-RMSE: 0.1068
-R^2: 0.2401
-Pearson Correlation: 0.7578
+RMSE: 0.0860
+R^2: 0.3731
+Pearson Correlation: 0.8770
 

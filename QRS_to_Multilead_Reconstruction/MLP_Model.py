@@ -13,6 +13,14 @@ from scipy.stats import pearsonr
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
+# --- Load encoded feature names ---
+encoded_feats_path = Path("encoded_feature_names.txt")
+if encoded_feats_path.exists():
+    with open(encoded_feats_path, 'r') as f:
+        encoded_features = [line.strip() for line in f.readlines()]
+else:
+    encoded_features = []
+
 # --- Config ---
 leads_to_predict = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6']
 results_dir = Path("MLP_Model_Results")
@@ -47,8 +55,9 @@ def extract_features_and_targets(data, target_lead):
             # Metadata
             age = seg.get("age", 0)
             sex = 1 if str(seg.get("sex", "M")).upper().startswith("M") else 0
-            heart_axis = int(seg.get("heart_axis", 0))
             hr = seg.get("hr", 0)
+            # One-hot encoded features
+            onehot_values = [seg.get(name, 0) for name in encoded_features]
             # Statistical features
             stats_i = seg['stats_lead_I']
             stats_ii = seg['stats_lead_II']
@@ -56,13 +65,13 @@ def extract_features_and_targets(data, target_lead):
                 pr_interval_I, qrs_duration_I, qt_interval_I,
                 pr_interval_II, qrs_duration_II, qt_interval_II,
                 aq1, ar1, as1, at1, aq2, ar2, as2, at2,
-                age, sex, heart_axis, hr
-            ] + list(stats_i.values()) + list(stats_ii.values())
+                age, sex, hr
+            ] + onehot_values + list(stats_i.values()) + list(stats_ii.values())
             target = seg['other_leads'][target_lead]
             if len(target) == 80:  # Only accept 80-sample segments
                 X.append(features)
                 y.append(target)
-        except Exception as e:
+        except Exception:
             continue
     return np.array(X), np.array(y)
 

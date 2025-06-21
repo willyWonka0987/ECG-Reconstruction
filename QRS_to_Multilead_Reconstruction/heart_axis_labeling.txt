@@ -1,9 +1,0 @@
-0: ALAD
-1: ARAD
-2: AXL
-3: AXR
-4: LAD
-5: MID
-6: NOT
-7: RAD
-8: SAG

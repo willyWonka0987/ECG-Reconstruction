@@ -23,6 +23,15 @@ meta_test_path = Path("test_split.csv")
 output_dir = Path("PQRST_Triplet_With_Stats_80")
 output_dir.mkdir(parents=True, exist_ok=True)
 
+# --- Load encoded feature names ---
+encoded_feats_path = Path("encoded_feature_names.txt")
+if encoded_feats_path.exists():
+    with open(encoded_feats_path, 'r') as f:
+        encoded_features = [line.strip() for line in f.readlines()]
+else:
+    encoded_features = []
+
+
 def extract_stat_features(segment):
     hist, _ = np.histogram(segment, bins=10, density=True)
     return {
@@ -63,13 +72,18 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
     dataset = []
     for i, sample in enumerate(tqdm(ecg_dataset, desc="Building dataset with stats (80 samples)")):
         row_meta = meta_df.iloc[i]
-        age, sex = row_meta["age"], row_meta["sex"]
-        heart_axis = row_meta.get("heart_axis", 0)
+        age = row_meta.get("age", 0)
+        sex = row_meta.get("sex", 0)
         hr = row_meta.get("hr", 0)
+        
+        # Gather one-hot encoded features
+        onehot_features = {key: row_meta.get(key, 0) for key in encoded_features}
+
         lead_i = sample[:, 0]
         cleaned_i = nk.ecg_clean(lead_i, sampling_rate=sampling_rate)
         r_peaks_i = nk.ecg_peaks(cleaned_i, sampling_rate=sampling_rate)[1]['ECG_R_Peaks']
         p_i, q_i, r_i, s_i, t_i = find_qspt(cleaned_i, r_peaks_i, sampling_rate)
+
         lead_ii = sample[:, 1]
         cleaned_ii = nk.ecg_clean(lead_ii, sampling_rate=sampling_rate)
         r_peaks_ii_data = nk.ecg_peaks(cleaned_ii, sampling_rate=sampling_rate)
@@ -77,6 +91,7 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
             continue
         r_peaks_ii = r_peaks_ii_data[1]['ECG_R_Peaks']
         p_ii, q_ii, r_ii, s_ii, t_ii = find_qspt(cleaned_ii, r_peaks_ii, sampling_rate)
+
         for j, r in enumerate(r_i):
             if j >= len(p_i) or j >= len(q_i) or j >= len(s_i) or j >= len(t_i):
                 continue
@@ -87,8 +102,7 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                 r_ii_val = r_peaks_ii[r_ii_idx]
             else:
                 continue
-            # --- MODIFIED SEGMENTATION ---
-            start, end = r - 40, r + 40  # 80 samples centered on R-peak
+            start, end = r - 40, r + 40
             if start >= 0 and end <= sample.shape[0]:
                 segment_i = lead_i[start:end]
                 segment_ii = lead_ii[start:end]
@@ -99,22 +113,22 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                 }
                 dataset.append({
                     "pqrst_lead_I": [(p_i[j]/sampling_rate, lead_i[p_i[j]]),
-                                     (q_i[j]/sampling_rate, lead_i[q_i[j]]),
-                                     (r/sampling_rate, lead_i[r]),
-                                     (s_i[j]/sampling_rate, lead_i[s_i[j]]),
-                                     (t_i[j]/sampling_rate, lead_i[t_i[j]])],
+                                      (q_i[j]/sampling_rate, lead_i[q_i[j]]),
+                                      (r/sampling_rate, lead_i[r]),
+                                      (s_i[j]/sampling_rate, lead_i[s_i[j]]),
+                                      (t_i[j]/sampling_rate, lead_i[t_i[j]])],
                     "pqrst_lead_II": [(p_ii[r_ii_idx]/sampling_rate, lead_ii[p_ii[r_ii_idx]]),
-                                      (q_ii[r_ii_idx]/sampling_rate, lead_ii[q_ii[r_ii_idx]]),
-                                      (r_ii_val/sampling_rate, lead_ii[r_ii_val]),
-                                      (s_ii[r_ii_idx]/sampling_rate, lead_ii[s_ii[r_ii_idx]]),
-                                      (t_ii[r_ii_idx]/sampling_rate, lead_ii[t_ii[r_ii_idx]])],
+                                       (q_ii[r_ii_idx]/sampling_rate, lead_ii[q_ii[r_ii_idx]]),
+                                       (r_ii_val/sampling_rate, lead_ii[r_ii_val]),
+                                       (s_ii[r_ii_idx]/sampling_rate, lead_ii[s_ii[r_ii_idx]]),
+                                       (t_ii[r_ii_idx]/sampling_rate, lead_ii[t_ii[r_ii_idx]])],
                     "stats_lead_I": stats_i,
                     "stats_lead_II": stats_ii,
                     "other_leads": other_leads_waveforms,
                     "age": age,
                     "sex": sex,
-                    "heart_axis": heart_axis,
                     "hr": hr,
+                    **onehot_features,
                     "source_index": i
                 })
     return dataset

@@ -1,6 +1,0 @@
-0: CD
-1: HYP
-2: MI
-3: NORM
-4: NOT
-5: STTC

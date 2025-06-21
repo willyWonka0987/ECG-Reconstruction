@@ -41,34 +41,39 @@ def extract_features_and_targets(data, target_lead):
         if target_lead not in seg['other_leads']:
             continue
         try:
-            # Interval-based + amplitude features
             pqrst_I = seg['pqrst_lead_I']
             pqrst_II = seg['pqrst_lead_II']
             (_, ap1), (tq1, aq1), (tr1, ar1), (ts1, as1), (tt1, at1) = pqrst_I
             (_, ap2), (tq2, aq2), (tr2, ar2), (ts2, as2), (tt2, at2) = pqrst_II
+
             pr_interval_I = tr1 - tq1
             qrs_duration_I = ts1 - tq1
             qt_interval_I = tt1 - tq1
             pr_interval_II = tr2 - tq2
             qrs_duration_II = ts2 - tq2
             qt_interval_II = tt2 - tq2
-            # Metadata
+
             age = seg.get("age", 0)
             sex = 1 if str(seg.get("sex", "M")).upper().startswith("M") else 0
             hr = seg.get("hr", 0)
-            # One-hot encoded features
             onehot_values = [seg.get(name, 0) for name in encoded_features]
-            # Statistical features
+
             stats_i = seg['stats_lead_I']
             stats_ii = seg['stats_lead_II']
+            freq_i = seg['freq_lead_I']
+            freq_ii = seg['freq_lead_II']
+
             features = [
                 pr_interval_I, qrs_duration_I, qt_interval_I,
                 pr_interval_II, qrs_duration_II, qt_interval_II,
                 aq1, ar1, as1, at1, aq2, ar2, as2, at2,
                 age, sex, hr
-            ] + onehot_values + list(stats_i.values()) + list(stats_ii.values())
+            ] + onehot_values \
+              + list(stats_i.values()) + list(stats_ii.values()) \
+              + list(freq_i.values()) + list(freq_ii.values())
+
             target = seg['other_leads'][target_lead]
-            if len(target) == 80:  # Only accept 80-sample segments
+            if len(target) == 80:
                 X.append(features)
                 y.append(target)
         except Exception:
@@ -82,7 +87,7 @@ def build_mlp_model(input_dim):
     x = Dense(128, activation='relu')(x)
     x = Dropout(0.3)(x)
     x = Dense(64, activation='relu')(x)
-    out = Dense(80, activation='linear')(x)  # Output is now 80 samples
+    out = Dense(80, activation='linear')(x)
     model = Model(inputs=inp, outputs=out)
     model.compile(optimizer='adam', loss='mse', metrics=['mae'])
     return model
@@ -121,13 +126,16 @@ with open(metrics_file, 'w') as f:
         if X_train_full.size == 0 or X_test.size == 0:
             print(f"⚠️ No data for lead {lead}, skipping.")
             continue
+
         X_train, X_val, y_train, y_val = train_test_split(
             X_train_full, y_train_full, test_size=0.1, random_state=42
         )
+
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_val_scaled = scaler.transform(X_val)
         X_test_scaled = scaler.transform(X_test)
+
         model = build_mlp_model(input_dim=X_train_scaled.shape[1])
         history = model.fit(
             X_train_scaled, y_train,
@@ -143,12 +151,15 @@ with open(metrics_file, 'w') as f:
             ],
             verbose=1
         )
+
         y_pred = model.predict(X_test_scaled)
         rmse = np.sqrt(mean_squared_error(y_test, y_pred))
         r2 = r2_score(y_test, y_pred)
         corr = pearsonr(y_test.flatten(), y_pred.flatten())[0]
+
         f.write(f"Lead {lead}\nRMSE: {rmse:.4f}\nR^2: {r2:.4f}\nPearson Correlation: {corr:.4f}\n\n")
         print(f"✅ Lead {lead}: RMSE={rmse:.4f}, R²={r2:.4f}, Corr={corr:.4f}")
+
         plot_prediction(y_test[0], y_pred[0], lead, plot_dir / f"lead_{lead}_prediction.png")
         plot_loss_curve(history, lead, plot_dir / f"lead_{lead}_loss_curve.png")
 

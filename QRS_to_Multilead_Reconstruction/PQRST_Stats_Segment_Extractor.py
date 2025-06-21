@@ -7,6 +7,8 @@ from pathlib import Path
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.stats import skew, kurtosis, entropy
+from scipy.signal import welch
+import pywt
 
 # --- Parameters ---
 sampling_rate = 100
@@ -45,6 +47,18 @@ def extract_stat_features(segment):
         'entropy': entropy(hist)
     }
 
+def extract_freq_features(segment, fs=100):
+    freqs, psd = welch(segment, fs=fs, nperseg=min(64, len(segment)))
+    dom_freq = freqs[np.argmax(psd)] if len(psd) > 0 else 0
+    psd_sum = np.sum(psd)
+    wavelet_coeffs = pywt.wavedec(segment, 'db6', level=2)
+    wavelet_energy = sum(np.sum(c**2) for c in wavelet_coeffs)
+    return {
+        'psd_total': psd_sum,
+        'dominant_freq': dom_freq,
+        'wavelet_energy': wavelet_energy
+    }
+
 def find_qspt(signal, r_peaks, sampling_rate, pre_window=0.06, post_window=0.12):
     pre_samples = int(pre_window * sampling_rate)
     post_samples = int(post_window * sampling_rate)
@@ -75,8 +89,6 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
         age = row_meta.get("age", 0)
         sex = row_meta.get("sex", 0)
         hr = row_meta.get("hr", 0)
-        
-        # Gather one-hot encoded features
         onehot_features = {key: row_meta.get(key, 0) for key in encoded_features}
 
         lead_i = sample[:, 0]
@@ -106,8 +118,12 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
             if start >= 0 and end <= sample.shape[0]:
                 segment_i = lead_i[start:end]
                 segment_ii = lead_ii[start:end]
+
                 stats_i = extract_stat_features(segment_i)
                 stats_ii = extract_stat_features(segment_ii)
+                freq_i = extract_freq_features(segment_i, fs=sampling_rate)
+                freq_ii = extract_freq_features(segment_ii, fs=sampling_rate)
+
                 other_leads_waveforms = {
                     lead_names[k]: sample[start:end, k] for k in range(12) if k not in [0, 1]
                 }
@@ -124,6 +140,8 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                                        (t_ii[r_ii_idx]/sampling_rate, lead_ii[t_ii[r_ii_idx]])],
                     "stats_lead_I": stats_i,
                     "stats_lead_II": stats_ii,
+                    "freq_lead_I": freq_i,
+                    "freq_lead_II": freq_ii,
                     "other_leads": other_leads_waveforms,
                     "age": age,
                     "sex": sex,
@@ -145,5 +163,4 @@ if __name__ == "__main__":
     print("Saving...")
     joblib.dump(train_set, output_dir / "pqrst_stats_train_80.pkl")
     joblib.dump(test_set, output_dir / "pqrst_stats_test_80.pkl")
-    print("✅ Done with statistical PQRST dataset (80 samples)!")
-
+    print("✅ Done with statistical + frequency PQRST dataset (80 samples)!")

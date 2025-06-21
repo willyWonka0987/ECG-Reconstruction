@@ -1,0 +1,15 @@
+heart_axis_ALAD
+heart_axis_ARAD
+heart_axis_AXL
+heart_axis_AXR
+heart_axis_LAD
+heart_axis_MID
+heart_axis_NOT
+heart_axis_RAD
+heart_axis_SAG
+superclasses_CD
+superclasses_HYP
+superclasses_MI
+superclasses_NORM
+superclasses_NOT
+superclasses_STTC

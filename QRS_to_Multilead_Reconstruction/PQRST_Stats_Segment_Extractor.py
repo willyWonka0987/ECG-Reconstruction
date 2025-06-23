@@ -86,7 +86,6 @@ def find_qspt(signal, r_peaks, sampling_rate):
 
 def build_dataset_with_stats(ecg_dataset, meta_df):
     dataset = []
-    meta_df = meta_df[meta_df.get("superclasses_NORM", 0) == 1].reset_index(drop=True)
 
     for i, sample in enumerate(tqdm(ecg_dataset, desc="Building dataset with stats (80 samples)")):
         if i >= len(meta_df):

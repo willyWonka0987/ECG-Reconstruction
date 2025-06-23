@@ -3,6 +3,7 @@ import joblib
 import neurokit2 as nk
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from pathlib import Path
 from tqdm import tqdm
 from scipy.stats import skew, kurtosis, entropy
@@ -22,7 +23,9 @@ input_test_path = Path("data_no_segmentation/ecg_test_clean.pkl")
 meta_train_path = Path("train_split.csv")
 meta_test_path = Path("test_split.csv")
 output_dir = Path("PQRST_Triplet_With_Stats_80")
+image_dir = output_dir / "train_segments_plots"
 output_dir.mkdir(parents=True, exist_ok=True)
+image_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Load encoded feature names ---
 encoded_feats_path = Path("encoded_feature_names.txt")
@@ -61,51 +64,61 @@ def find_qspt(signal, r_peaks, sampling_rate, pre_window=0.06, post_window=0.12)
     pre_samples = int(pre_window * sampling_rate)
     post_samples = int(post_window * sampling_rate)
     q_points, s_points, p_points, t_points = [], [], [], []
-    
+
     for r in r_peaks:
-        # Q point detection
         q_start = max(0, r - pre_samples)
         q_seg = signal[q_start:r]
         q = q_start + np.argmin(q_seg) if len(q_seg) > 0 else r
         q_points.append(q)
-        
-        # S point detection
+
         s_end = min(len(signal), r + post_samples)
         s_seg = signal[r:s_end]
         s = r + np.argmin(s_seg) if len(s_seg) > 0 else r
         s_points.append(s)
-        
-        # P point detection
+
         p_start = max(0, q - int(0.15 * sampling_rate))
         p_seg = signal[p_start:q]
         p = p_start + np.argmax(p_seg) if len(p_seg) > 0 else q
         p_points.append(p)
-        
-        # T point detection
+
         t_end = min(len(signal), s + int(0.4 * sampling_rate))
         t_seg = signal[s:t_end]
         t = s + np.argmax(t_seg) if len(t_seg) > 0 else s
         t_points.append(t)
-    
+
     return np.array(p_points), np.array(q_points), np.array(r_peaks), np.array(s_points), np.array(t_points)
+
+def plot_segment(sample, leads=['I', 'II', 'v1', 'v2', 'V3', 'v4', 'v5', 'v6'], meta_info=None, idx=0):
+    fig, axs = plt.subplots(len(leads), 1, figsize=(10, 6))
+    fig.suptitle(f"Segment {idx+1} - Metadata: {meta_info}")
+    for i, lead in enumerate(leads):
+        lead_idx = lead_names.index(lead)
+        axs[i].plot(sample[:, lead_idx])
+        axs[i].set_title(f"Lead {lead}")
+        axs[i].grid(True)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.savefig(image_dir / f"segment_{idx+1}.png")
+    plt.close()
 
 def build_dataset_with_stats(ecg_dataset, meta_df):
     dataset = []
-    
+    meta_df = meta_df[meta_df.get("superclasses_NORM", 0) == 1].reset_index(drop=True)
+
+    plot_count = 0
     for i, sample in enumerate(tqdm(ecg_dataset, desc="Building dataset with stats (80 samples)")):
+        if i >= len(meta_df):
+            break
         row_meta = meta_df.iloc[i]
         age = row_meta.get("age", 0)
         sex = row_meta.get("sex", 0)
         hr = row_meta.get("hr", 0)
         onehot_features = {key: row_meta.get(key, 0) for key in encoded_features}
-        
-        # Process Lead I
+
         lead_i = sample[:, 0]
         cleaned_i = nk.ecg_clean(lead_i, sampling_rate=sampling_rate)
         r_peaks_i = nk.ecg_peaks(cleaned_i, sampling_rate=sampling_rate)[1]['ECG_R_Peaks']
         p_i, q_i, r_i, s_i, t_i = find_qspt(cleaned_i, r_peaks_i, sampling_rate)
-        
-        # Process Lead II
+
         lead_ii = sample[:, 1]
         cleaned_ii = nk.ecg_clean(lead_ii, sampling_rate=sampling_rate)
         r_peaks_ii_data = nk.ecg_peaks(cleaned_ii, sampling_rate=sampling_rate)
@@ -113,8 +126,7 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
             continue
         r_peaks_ii = r_peaks_ii_data[1]['ECG_R_Peaks']
         p_ii, q_ii, r_ii, s_ii, t_ii = find_qspt(cleaned_ii, r_peaks_ii, sampling_rate)
-        
-        # Process Lead V3 (NEW)
+
         lead_v3 = sample[:, lead_names.index('V3')]
         cleaned_v3 = nk.ecg_clean(lead_v3, sampling_rate=sampling_rate)
         r_peaks_v3_data = nk.ecg_peaks(cleaned_v3, sampling_rate=sampling_rate)
@@ -122,47 +134,45 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
             continue
         r_peaks_v3 = r_peaks_v3_data[1]['ECG_R_Peaks']
         p_v3, q_v3, r_v3, s_v3, t_v3 = find_qspt(cleaned_v3, r_peaks_v3, sampling_rate)
-        
+
         for j, r in enumerate(r_i):
             if j >= len(p_i) or j >= len(q_i) or j >= len(s_i) or j >= len(t_i):
                 continue
-                
-            if len(r_peaks_ii) > 0:
-                r_ii_idx = np.argmin(np.abs(r_peaks_ii - r))
-                if r_ii_idx >= len(p_ii) or r_ii_idx >= len(q_ii) or r_ii_idx >= len(s_ii) or r_ii_idx >= len(t_ii):
-                    continue
-                r_ii_val = r_peaks_ii[r_ii_idx]
-            else:
+            if len(r_peaks_ii) == 0 or len(r_peaks_v3) == 0:
                 continue
-                
-            # Find corresponding V3 R-peak (NEW)
-            if len(r_peaks_v3) > 0:
-                r_v3_idx = np.argmin(np.abs(r_peaks_v3 - r))
-                if r_v3_idx >= len(p_v3) or r_v3_idx >= len(q_v3) or r_v3_idx >= len(s_v3) or r_v3_idx >= len(t_v3):
-                    continue
-                r_v3_val = r_peaks_v3[r_v3_idx]
-            else:
+            r_ii_idx = np.argmin(np.abs(r_peaks_ii - r))
+            r_v3_idx = np.argmin(np.abs(r_peaks_v3 - r))
+            if r_ii_idx >= len(p_ii) or r_ii_idx >= len(q_ii) or r_ii_idx >= len(s_ii) or r_ii_idx >= len(t_ii):
                 continue
-                
+            if r_v3_idx >= len(p_v3) or r_v3_idx >= len(q_v3) or r_v3_idx >= len(s_v3) or r_v3_idx >= len(t_v3):
+                continue
+            r_ii_val = r_peaks_ii[r_ii_idx]
+            r_v3_val = r_peaks_v3[r_v3_idx]
+
             start, end = r - padding, r + padding
             if start >= 0 and end <= sample.shape[0]:
                 segment_i = lead_i[start:end]
                 segment_ii = lead_ii[start:end]
-                segment_v3 = lead_v3[start:end]  # NEW: V3 segment
-                
+                segment_v3 = lead_v3[start:end]
+
                 stats_i = extract_stat_features(segment_i)
                 stats_ii = extract_stat_features(segment_ii)
-                stats_v3 = extract_stat_features(segment_v3)  # NEW: V3 stats
-                
+                stats_v3 = extract_stat_features(segment_v3)
+
                 freq_i = extract_freq_features(segment_i, fs=sampling_rate)
                 freq_ii = extract_freq_features(segment_ii, fs=sampling_rate)
-                freq_v3 = extract_freq_features(segment_v3, fs=sampling_rate)  # NEW: V3 freq
-                
+                freq_v3 = extract_freq_features(segment_v3, fs=sampling_rate)
+
                 other_leads_waveforms = {
-                    lead_names[k]: sample[start:end, k] for k in range(12) 
-                    if k not in [0, 1, lead_names.index('V3')]  # Exclude V3 from other_leads
+                    lead_names[k]: sample[start:end, k] for k in range(12)
+                    if k not in [0, 1, lead_names.index('V3')]
                 }
-                
+
+                if plot_count < 20:
+                    plot_segment(sample[start:end, :], leads=['I', 'II', 'V3'],
+                                 meta_info=f"Age: {age}, Sex: {sex}, HR: {hr}", idx=plot_count)
+                    plot_count += 1
+
                 dataset.append({
                     "pqrst_lead_I": [
                         (p_i[j]/sampling_rate, lead_i[p_i[j]]),
@@ -178,7 +188,7 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                         (s_ii[r_ii_idx]/sampling_rate, lead_ii[s_ii[r_ii_idx]]),
                         (t_ii[r_ii_idx]/sampling_rate, lead_ii[t_ii[r_ii_idx]])
                     ],
-                    "pqrst_lead_V3": [  # NEW: V3 features
+                    "pqrst_lead_V3": [
                         (p_v3[r_v3_idx]/sampling_rate, lead_v3[p_v3[r_v3_idx]]),
                         (q_v3[r_v3_idx]/sampling_rate, lead_v3[q_v3[r_v3_idx]]),
                         (r_v3_val/sampling_rate, lead_v3[r_v3_val]),
@@ -187,10 +197,10 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                     ],
                     "stats_lead_I": stats_i,
                     "stats_lead_II": stats_ii,
-                    "stats_lead_V3": stats_v3,  # NEW
+                    "stats_lead_V3": stats_v3,
                     "freq_lead_I": freq_i,
                     "freq_lead_II": freq_ii,
-                    "freq_lead_V3": freq_v3,  # NEW
+                    "freq_lead_V3": freq_v3,
                     "other_leads": other_leads_waveforms,
                     "age": age,
                     "sex": sex,
@@ -198,7 +208,7 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                     **onehot_features,
                     "source_index": i
                 })
-                
+
     return dataset
 
 if __name__ == "__main__":
@@ -207,14 +217,14 @@ if __name__ == "__main__":
     test_data = joblib.load(input_test_path)
     train_meta = pd.read_csv(meta_train_path)
     test_meta = pd.read_csv(meta_test_path)
-    
+
     print("Building datasets with stats (80 samples)...")
     train_set = build_dataset_with_stats(train_data, train_meta)
     test_set = build_dataset_with_stats(test_data, test_meta)
-    
+
     print("Saving...")
     joblib.dump(train_set, output_dir / "pqrst_stats_train_80.pkl")
     joblib.dump(test_set, output_dir / "pqrst_stats_test_80.pkl")
-    
+
     print("✅ Done with statistical + frequency PQRST dataset (80 samples)!")
 

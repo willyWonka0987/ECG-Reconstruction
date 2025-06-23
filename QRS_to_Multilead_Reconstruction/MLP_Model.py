@@ -22,7 +22,7 @@ if encoded_feats_path.exists():
         encoded_features = [line.strip() for line in f.readlines()]
 
 # --- Config ---
-leads_to_predict = ['V1', 'V2', 'V4', 'V5', 'V6']
+leads_to_predict = ['V1', 'V3', 'V4', 'V5', 'V6']  # V3 now predicted, V2 used as input only
 results_dir = Path("MLP_Model_Results")
 model_dir = results_dir / "models"
 plot_dir = results_dir / "plots"
@@ -43,11 +43,11 @@ def extract_features_and_targets(data, target_lead):
         try:
             pqrst_I = seg['pqrst_lead_I']
             pqrst_II = seg['pqrst_lead_II']
-            pqrst_V3 = seg['pqrst_lead_V3']
+            pqrst_V2 = seg['pqrst_lead_V2']
 
             (_, ap1), (tq1, aq1), (tr1, ar1), (ts1, as1), (tt1, at1) = pqrst_I
             (_, ap2), (tq2, aq2), (tr2, ar2), (ts2, as2), (tt2, at2) = pqrst_II
-            (_, ap3), (tq3, aq3), (tr3, ar3), (ts3, as3), (tt3, at3) = pqrst_V3
+            (_, ap3), (tq3, aq3), (tr3, ar3), (ts3, as3), (tt3, at3) = pqrst_V2
 
             intervals = [
                 tr1 - tq1, ts1 - tq1, tt1 - tq1,
@@ -69,13 +69,13 @@ def extract_features_and_targets(data, target_lead):
             stats_features = (
                 list(seg['stats_lead_I'].values()) +
                 list(seg['stats_lead_II'].values()) +
-                list(seg['stats_lead_V3'].values())
+                list(seg['stats_lead_V2'].values())
             )
 
             freq_features = (
                 list(seg['freq_lead_I'].values()) +
                 list(seg['freq_lead_II'].values()) +
-                list(seg['freq_lead_V3'].values())
+                list(seg['freq_lead_V2'].values())
             )
 
             features = (
@@ -170,7 +170,6 @@ with open(metrics_file, 'w') as f:
         f.write(f"Lead {lead}\nRMSE: {rmse:.4f}\nR^2: {r2:.4f}\nPearson Correlation: {corr:.4f}\n\n")
         print(f"✅ Lead {lead}: RMSE={rmse:.4f}, R²={r2:.4f}, Corr={corr:.4f}")
 
-        # Save one prediction plot
         plt.figure(figsize=(10, 4))
         plt.plot(y_test[0], label='Actual', linewidth=2)
         plt.plot(y_pred[0], label='Predicted', linestyle='--')
@@ -183,7 +182,6 @@ with open(metrics_file, 'w') as f:
         plt.savefig(plot_dir / f"lead_{lead}_prediction.png")
         plt.close()
 
-        # Save loss curve
         plt.figure(figsize=(8, 4))
         plt.plot(history.history['loss'], label='Train Loss')
         plt.plot(history.history['val_loss'], label='Val Loss')
@@ -196,8 +194,6 @@ with open(metrics_file, 'w') as f:
         plt.savefig(plot_dir / f"lead_{lead}_loss_curve.png")
         plt.close()
 
-# Final plot
-plot_multiple_predictions = plot_grid_predictions
-plot_multiple_predictions(test_data, leads_to_predict, num_samples=10)
-
+plot_grid_predictions(test_data, leads_to_predict, num_samples=10)
 print("\n🎉 All models trained and evaluated.")
+

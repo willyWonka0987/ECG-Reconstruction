@@ -1,24 +1,27 @@
-# Modified to use V2 as an input like leads I and II
-# and V3 moved to other_leads to be predicted
-
 import os
 import joblib
 import neurokit2 as nk
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 from tqdm import tqdm
 from scipy.stats import skew, kurtosis, entropy
 from scipy.signal import welch
 import pywt
+import matplotlib.pyplot as plt
 
 # --- Parameters ---
 sampling_rate = 100
-padding = 40
+padding = 40  # 80 samples total, centered on R-peak
 segment_length = 2 * padding
 lead_names = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF',
               'V1', 'V2', 'V3', 'V4', 'V5', 'V6']
+
+# Detection parameters (from Test_PQRST.py)
+pre_window = 0.08   # Q window (s)
+post_window = 0.15   # S/T window (s)
+p_window = 0.25      # P window (s)
+t_window = 0.4       # T window (s)
 
 # --- Input/Output Paths ---
 input_train_path = Path("data_no_segmentation/ecg_train_clean.pkl")
@@ -27,149 +30,170 @@ meta_train_path = Path("train_split.csv")
 meta_test_path = Path("test_split.csv")
 output_dir = Path("PQRST_Triplet_With_Stats_80")
 output_dir.mkdir(parents=True, exist_ok=True)
+plot_dir = output_dir / "segment_plots"
+plot_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Load encoded feature names ---
 encoded_feats_path = Path("encoded_feature_names.txt")
-encoded_features = []
 if encoded_feats_path.exists():
     with open(encoded_feats_path, 'r') as f:
         encoded_features = [line.strip() for line in f.readlines()]
+else:
+    encoded_features = []
 
+def detect_pqrst(signal, r_peaks, sampling_rate, lead_name):
+    """
+    Robust PQRST detector based on Test_PQRST.py implementation
+    Handles aVR's inverted physiology with specialized logic
+    """
+    pre_samples = int(pre_window * sampling_rate)
+    post_samples = int(post_window * sampling_rate)
+    p_samples = int(p_window * sampling_rate)
+    t_samples = int(t_window * sampling_rate)
 
-def extract_stat_features(segment):
-    hist, _ = np.histogram(segment, bins=10, density=True)
-    return {
-        'mean': np.mean(segment),
-        'std': np.std(segment),
-        'min': np.min(segment),
-        'max': np.max(segment),
-        'skewness': skew(segment),
-        'kurtosis': kurtosis(segment),
-        'rms': np.sqrt(np.mean(np.square(segment))),
-        'entropy': entropy(hist)
-    }
+    p_points, q_points, s_points, t_points = [], [], [], []
 
-def extract_freq_features(segment, fs=100):
-    freqs, psd = welch(segment, fs=fs, nperseg=min(64, len(segment)))
-    dom_freq = freqs[np.argmax(psd)] if len(psd) > 0 else 0
-    psd_sum = np.sum(psd)
-    wavelet_coeffs = pywt.wavedec(segment, 'db6', level=2)
-    wavelet_energy = sum(np.sum(c**2) for c in wavelet_coeffs)
-    return {
-        'psd_total': psd_sum,
-        'dominant_freq': dom_freq,
-        'wavelet_energy': wavelet_energy
-    }
-
-def find_qspt(signal, r_peaks, sampling_rate):
-    pre_samples = int(0.06 * sampling_rate)
-    post_samples = int(0.12 * sampling_rate)
-    q_points, s_points, p_points, t_points = [], [], [], []
     for r in r_peaks:
+        # --- Q point detection ---
         q_start = max(0, r - pre_samples)
         q_seg = signal[q_start:r]
-        q = q_start + np.argmin(q_seg) if len(q_seg) > 0 else r
+        
+        # aVR requires inverted logic (positive deflection)
+        if lead_name == 'aVR':
+            q = q_start + np.argmax(q_seg) if len(q_seg) > 0 else r
+        else:
+            q = q_start + np.argmin(q_seg) if len(q_seg) > 0 else r
         q_points.append(q)
+
+        # --- S point detection ---
         s_end = min(len(signal), r + post_samples)
         s_seg = signal[r:s_end]
-        s = r + np.argmin(s_seg) if len(s_seg) > 0 else r
+        
+        # aVR requires inverted logic
+        if lead_name == 'aVR':
+            s = r + np.argmax(s_seg) if len(s_seg) > 0 else r
+        else:
+            s = r + np.argmin(s_seg) if len(s_seg) > 0 else r
         s_points.append(s)
-        p_start = max(0, q - int(0.15 * sampling_rate))
+
+        # --- P point detection ---
+        p_start = max(0, q - p_samples)
         p_seg = signal[p_start:q]
-        p = p_start + np.argmax(p_seg) if len(p_seg) > 0 else q
+        
+        # aVR requires inverted logic
+        if lead_name == 'aVR':
+            p = p_start + np.argmin(p_seg) if len(p_seg) > 0 else q
+        else:
+            p = p_start + np.argmax(p_seg) if len(p_seg) > 0 else q
         p_points.append(p)
-        t_end = min(len(signal), s + int(0.4 * sampling_rate))
+
+        # --- T point detection ---
+        t_end = min(len(signal), s + t_samples)
         t_seg = signal[s:t_end]
-        t = s + np.argmax(t_seg) if len(t_seg) > 0 else s
+        
+        # aVR requires inverted logic
+        if lead_name == 'aVR':
+            t = s + np.argmin(t_seg) if len(t_seg) > 0 else s
+        else:
+            t = s + np.argmax(t_seg) if len(t_seg) > 0 else s
         t_points.append(t)
-    return np.array(p_points), np.array(q_points), np.array(r_peaks), np.array(s_points), np.array(t_points)
+
+    return (
+        np.array(p_points), 
+        np.array(q_points), 
+        np.array(r_peaks), 
+        np.array(s_points), 
+        np.array(t_points)
+    )
 
 def build_dataset_with_stats(ecg_dataset, meta_df):
     dataset = []
-
     for i, sample in enumerate(tqdm(ecg_dataset, desc="Building dataset with stats (80 samples)")):
-        if i >= len(meta_df):
-            break
         row_meta = meta_df.iloc[i]
         age = row_meta.get("age", 0)
         sex = row_meta.get("sex", 0)
         hr = row_meta.get("hr", 0)
         onehot_features = {key: row_meta.get(key, 0) for key in encoded_features}
-
+        
+        # Process Lead I
         lead_i = sample[:, 0]
+        cleaned_i = nk.ecg_clean(lead_i, sampling_rate)
+        r_peaks_i = nk.ecg_peaks(cleaned_i, sampling_rate)[1]['ECG_R_Peaks']
+        p_i, q_i, r_i, s_i, t_i = detect_pqrst(cleaned_i, r_peaks_i, sampling_rate, 'I')
+        
+        # Process Lead II
         lead_ii = sample[:, 1]
-        lead_v2 = sample[:, lead_names.index('V2')]
-        lead_v3 = sample[:, lead_names.index('V3')]
-
-        r_i = nk.ecg_peaks(nk.ecg_clean(lead_i, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
-        r_ii = nk.ecg_peaks(nk.ecg_clean(lead_ii, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
-        r_v2 = nk.ecg_peaks(nk.ecg_clean(lead_v2, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
-        r_v3 = nk.ecg_peaks(nk.ecg_clean(lead_v3, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
-
-        if len(r_i) == 0 or len(r_ii) == 0 or len(r_v2) == 0 or len(r_v3) == 0:
-            continue
-
-        p_i, q_i, r_i, s_i, t_i = find_qspt(lead_i, r_i, sampling_rate)
-        p_ii, q_ii, r_ii, s_ii, t_ii = find_qspt(lead_ii, r_ii, sampling_rate)
-        p_v2, q_v2, r_v2, s_v2, t_v2 = find_qspt(lead_v2, r_v2, sampling_rate)
-        p_v3, q_v3, r_v3, s_v3, t_v3 = find_qspt(lead_v3, r_v3, sampling_rate)
-
-        for j, r in enumerate(r_i):
-            if j >= len(p_i) or j >= len(q_i) or j >= len(s_i) or j >= len(t_i):
-                continue
-            r_ii_idx = np.argmin(np.abs(r_ii - r))
-            r_v2_idx = np.argmin(np.abs(r_v2 - r))
-            r_v3_idx = np.argmin(np.abs(r_v3 - r))
-            if r_ii_idx >= len(p_ii) or r_v2_idx >= len(p_v2) or r_v3_idx >= len(p_v3):
-                continue
-
+        cleaned_ii = nk.ecg_clean(lead_ii, sampling_rate)
+        r_peaks_ii = nk.ecg_peaks(cleaned_ii, sampling_rate)[1]['ECG_R_Peaks']
+        p_ii, q_ii, r_ii, s_ii, t_ii = detect_pqrst(cleaned_ii, r_peaks_ii, sampling_rate, 'II')
+        
+        # Process Lead aVR with special handling
+        lead_avr = sample[:, 3]
+        # Flip signal for proper R-peak detection in aVR
+        flipped_avr = -lead_avr
+        cleaned_flipped_avr = nk.ecg_clean(flipped_avr, sampling_rate)
+        r_peaks_avr = nk.ecg_peaks(cleaned_flipped_avr, sampling_rate)[1]['ECG_R_Peaks']
+        # Use original signal for PQRST detection
+        p_avr, q_avr, r_avr, s_avr, t_avr = detect_pqrst(lead_avr, r_peaks_avr, sampling_rate, 'aVR')
+        
+        # Find common valid segments across all leads
+        min_len = min(len(p_i), len(q_i), len(r_i), len(s_i), len(t_i),
+                      len(p_ii), len(q_ii), len(r_ii), len(s_ii), len(t_ii),
+                      len(p_avr), len(q_avr), len(r_avr), len(s_avr), len(t_avr))
+        
+        for j in range(min_len):
+            r = r_i[j]
             start, end = r - padding, r + padding
-            if start >= 0 and end <= sample.shape[0]:
-                segment_i = lead_i[start:end]
-                segment_ii = lead_ii[start:end]
-                segment_v2 = lead_v2[start:end]
-                segment_v3 = lead_v3[start:end]
-
-                stats_i = extract_stat_features(segment_i)
-                stats_ii = extract_stat_features(segment_ii)
-                stats_v2 = extract_stat_features(segment_v2)
-
-                freq_i = extract_freq_features(segment_i, fs=sampling_rate)
-                freq_ii = extract_freq_features(segment_ii, fs=sampling_rate)
-                freq_v2 = extract_freq_features(segment_v2, fs=sampling_rate)
-
-                other_leads_waveforms = {
-                    lead_names[k]: sample[start:end, k] for k in range(12)
-                    if k not in [0, 1, lead_names.index('V2')]
-                }
-
-                dataset.append({
-                    "pqrst_lead_I": [(p_i[j]/sampling_rate, lead_i[p_i[j]]), (q_i[j]/sampling_rate, lead_i[q_i[j]]),
-                                       (r/sampling_rate, lead_i[r]), (s_i[j]/sampling_rate, lead_i[s_i[j]]), (t_i[j]/sampling_rate, lead_i[t_i[j]])],
-                    "pqrst_lead_II": [(p_ii[r_ii_idx]/sampling_rate, lead_ii[p_ii[r_ii_idx]]),
-                                        (q_ii[r_ii_idx]/sampling_rate, lead_ii[q_ii[r_ii_idx]]),
-                                        (r_ii[r_ii_idx]/sampling_rate, lead_ii[r_ii[r_ii_idx]]),
-                                        (s_ii[r_ii_idx]/sampling_rate, lead_ii[s_ii[r_ii_idx]]),
-                                        (t_ii[r_ii_idx]/sampling_rate, lead_ii[t_ii[r_ii_idx]])],
-                    "pqrst_lead_V2": [(p_v2[r_v2_idx]/sampling_rate, lead_v2[p_v2[r_v2_idx]]),
-                                        (q_v2[r_v2_idx]/sampling_rate, lead_v2[q_v2[r_v2_idx]]),
-                                        (r_v2[r_v2_idx]/sampling_rate, lead_v2[r_v2[r_v2_idx]]),
-                                        (s_v2[r_v2_idx]/sampling_rate, lead_v2[s_v2[r_v2_idx]]),
-                                        (t_v2[r_v2_idx]/sampling_rate, lead_v2[t_v2[r_v2_idx]])],
-                    "stats_lead_I": stats_i,
-                    "stats_lead_II": stats_ii,
-                    "stats_lead_V2": stats_v2,
-                    "freq_lead_I": freq_i,
-                    "freq_lead_II": freq_ii,
-                    "freq_lead_V2": freq_v2,
-                    "other_leads": other_leads_waveforms,
-                    "age": age,
-                    "sex": sex,
-                    "hr": hr,
-                    **onehot_features,
-                    "source_index": i
-                })
-
+            
+            # Skip segments near boundaries
+            if start < 0 or end > sample.shape[0]:
+                continue
+                
+            segment_i = lead_i[start:end]
+            segment_ii = lead_ii[start:end]
+            segment_avr = lead_avr[start:end]
+            
+            # Extract other leads (excluding I, II, aVR)
+            other_leads = {
+                lead_names[k]: sample[start:end, k] 
+                for k in range(12) 
+                if k not in [0, 1, 3]
+            }
+            
+            # Build dataset entry with full PQRST data
+            dataset.append({
+                # Lead I features
+                "pqrst_lead_I": [
+                    (p_i[j]/sampling_rate, lead_i[p_i[j]]),
+                    (q_i[j]/sampling_rate, lead_i[q_i[j]]),
+                    (r_i[j]/sampling_rate, lead_i[r_i[j]]),
+                    (s_i[j]/sampling_rate, lead_i[s_i[j]]),
+                    (t_i[j]/sampling_rate, lead_i[t_i[j]])
+                ],
+                # Lead II features
+                "pqrst_lead_II": [
+                    (p_ii[j]/sampling_rate, lead_ii[p_ii[j]]),
+                    (q_ii[j]/sampling_rate, lead_ii[q_ii[j]]),
+                    (r_ii[j]/sampling_rate, lead_ii[r_ii[j]]),
+                    (s_ii[j]/sampling_rate, lead_ii[s_ii[j]]),
+                    (t_ii[j]/sampling_rate, lead_ii[t_ii[j]])
+                ],
+                # Lead aVR features
+                "pqrst_lead_aVR": [
+                    (p_avr[j]/sampling_rate, lead_avr[p_avr[j]]),
+                    (q_avr[j]/sampling_rate, lead_avr[q_avr[j]]),
+                    (r_avr[j]/sampling_rate, lead_avr[r_avr[j]]),
+                    (s_avr[j]/sampling_rate, lead_avr[s_avr[j]]),
+                    (t_avr[j]/sampling_rate, lead_avr[t_avr[j]])
+                ],
+                "other_leads": other_leads,
+                "age": age,
+                "sex": sex,
+                "hr": hr,
+                **onehot_features,
+                "source_index": i
+            })
+            
     return dataset
 
 if __name__ == "__main__":
@@ -186,5 +210,6 @@ if __name__ == "__main__":
     print("Saving...")
     joblib.dump(train_set, output_dir / "pqrst_stats_train_80.pkl")
     joblib.dump(test_set, output_dir / "pqrst_stats_test_80.pkl")
-    print("✅ Done with V2-based PQRST dataset!")
+
+    print("✅ Done with statistical + frequency PQRST dataset (80 samples)!")
 

@@ -7,13 +7,13 @@ from pathlib import Path
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Dropout, Input
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
-from tensorflow.keras.metrics import MeanSquaredError
+from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputRegressor
+from sklearn.linear_model import Ridge
 from xgboost import XGBRegressor
 
 # --- Load encoded feature names ---
@@ -25,7 +25,7 @@ if encoded_feats_path.exists():
 
 # --- Config ---
 leads_to_predict = ['V1', 'V3', 'V4', 'V5', 'V6']
-results_dir = Path("Ensemble_Model_Results")
+results_dir = Path("Stacking_Ensemble_Results")
 model_dir = results_dir / "models"
 plot_dir = results_dir / "plots"
 metrics_file = results_dir / "metrics.txt"
@@ -108,7 +108,7 @@ def build_mlp_model(input_dim):
 # --- Training ---
 with open(metrics_file, 'w') as f:
     for lead in leads_to_predict:
-        print(f"\n🔧 Training ensemble for Lead {lead}...")
+        print(f"\n🔧 Training stacking ensemble for Lead {lead}...")
         X_train_full, y_train_full = extract_features_and_targets(train_data, lead)
         X_test, y_test = extract_features_and_targets(test_data, lead)
 
@@ -125,7 +125,10 @@ with open(metrics_file, 'w') as f:
         X_val_scaled = scaler.transform(X_val)
         X_test_scaled = scaler.transform(X_test)
 
-        # --- MLP ---
+        # --- Base Models ---
+        xgb_model = MultiOutputRegressor(XGBRegressor(n_estimators=150, learning_rate=0.1, max_depth=6, verbosity=0))
+        xgb_model.fit(X_train_scaled, y_train)
+
         mlp_model = build_mlp_model(input_dim=X_train_scaled.shape[1])
         mlp_model.fit(
             X_train_scaled, y_train,
@@ -134,34 +137,38 @@ with open(metrics_file, 'w') as f:
             callbacks=[EarlyStopping(patience=10, restore_best_weights=True)],
             verbose=1
         )
-        y_pred_mlp = mlp_model.predict(X_test_scaled)
+        y_pred_mlp_train = mlp_model.predict(X_train_scaled)
+        y_pred_xgb_train = xgb_model.predict(X_train_scaled)
 
-        # --- XGBoost ---
-        xgb_base = XGBRegressor(n_estimators=150, learning_rate=0.1, max_depth=6, verbosity=0)
-        xgb_model = MultiOutputRegressor(xgb_base)
-        xgb_model.fit(X_train_scaled, y_train)
-        y_pred_xgb = xgb_model.predict(X_test_scaled)
+        # --- Meta Model ---
+        meta_X_train = np.hstack([y_pred_mlp_train, y_pred_xgb_train])
+        meta_model = Ridge(alpha=1.0)
+        meta_model.fit(meta_X_train, y_train)
 
-        # --- Ensemble (simple average) ---
-        y_pred_ens = (y_pred_mlp + y_pred_xgb) / 2
+        # --- Predict ---
+        y_pred_mlp_test = mlp_model.predict(X_test_scaled)
+        y_pred_xgb_test = xgb_model.predict(X_test_scaled)
+        meta_X_test = np.hstack([y_pred_mlp_test, y_pred_xgb_test])
+        y_pred_stack = meta_model.predict(meta_X_test)
 
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred_ens))
-        r2 = r2_score(y_test, y_pred_ens)
-        corr = pearsonr(y_test.flatten(), y_pred_ens.flatten())[0]
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred_stack))
+        r2 = r2_score(y_test, y_pred_stack)
+        corr = pearsonr(y_test.flatten(), y_pred_stack.flatten())[0]
 
         f.write(f"Lead {lead}\nRMSE: {rmse:.4f}\nR^2: {r2:.4f}\nPearson Correlation: {corr:.4f}\n\n")
         print(f"✅ Lead {lead}: RMSE={rmse:.4f}, R²={r2:.4f}, Corr={corr:.4f}")
 
         plt.figure(figsize=(10, 4))
         plt.plot(y_test[0], label='Actual', linewidth=2)
-        plt.plot(y_pred_ens[0], label='Ensemble', linestyle='--')
-        plt.title(f"Lead {lead}: Actual vs Ensemble Prediction")
+        plt.plot(y_pred_stack[0], label='Stacked', linestyle='--')
+        plt.title(f"Lead {lead}: Actual vs Stacked Prediction")
         plt.xlabel("Time (samples)")
         plt.ylabel("Amplitude")
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(plot_dir / f"lead_{lead}_ensemble_prediction.png")
+        plt.savefig(plot_dir / f"lead_{lead}_stacked_prediction.png")
         plt.close()
 
-print("\n🎉 All ensemble models trained and evaluated.")
+print("\n🎉 All stacked ensemble models trained and evaluated.")
+

@@ -25,7 +25,7 @@ input_train_path = Path("data_no_segmentation/ecg_train_clean.pkl")
 input_test_path = Path("data_no_segmentation/ecg_test_clean.pkl")
 meta_train_path = Path("train_split.csv")
 meta_test_path = Path("test_split.csv")
-output_dir = Path("PQRST_Triplet_With_Stats_80")
+output_dir = Path("PQRST_80_Datasets")
 output_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Load encoded feature names ---

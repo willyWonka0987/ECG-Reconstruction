@@ -4,14 +4,17 @@ import matplotlib.pyplot as plt
 import joblib
 import numpy as np
 from pathlib import Path
-from tqdm import tqdm
-from sklearn.model_selection import GridSearchCV
-from xgboost import XGBRegressor
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Dropout, Input
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+from tensorflow.keras.metrics import MeanSquaredError
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.stats import pearsonr
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.multioutput import MultiOutputRegressor
+from xgboost import XGBRegressor
 
 # --- Load encoded feature names ---
 encoded_feats_path = Path("encoded_feature_names.txt")
@@ -22,7 +25,7 @@ if encoded_feats_path.exists():
 
 # --- Config ---
 leads_to_predict = ['V1', 'V3', 'V4', 'V5', 'V6']
-results_dir = Path("XGBoost_Model_Results")
+results_dir = Path("Ensemble_Model_Results")
 model_dir = results_dir / "models"
 plot_dir = results_dir / "plots"
 metrics_file = results_dir / "metrics.txt"
@@ -31,8 +34,8 @@ model_dir.mkdir(parents=True, exist_ok=True)
 plot_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Load datasets ---
-train_data = joblib.load("PQRST_Triplet_With_Stats_80/pqrst_stats_train_80.pkl")
-test_data = joblib.load("PQRST_Triplet_With_Stats_80/pqrst_stats_test_80.pkl")
+train_data = joblib.load("PQRST_80_Datasets/pqrst_stats_train_80.pkl")
+test_data = joblib.load("PQRST_80_Datasets/pqrst_stats_test_80.pkl")
 
 def extract_features_and_targets(data, target_lead):
     X, y = [], []
@@ -91,15 +94,26 @@ def extract_features_and_targets(data, target_lead):
             continue
     return np.array(X), np.array(y)
 
+def build_mlp_model(input_dim):
+    inp = Input(shape=(input_dim,))
+    x = Dense(256, activation='relu')(inp)
+    x = Dropout(0.3)(x)
+    x = Dense(128, activation='relu')(x)
+    x = Dropout(0.3)(x)
+    x = Dense(80, activation='linear')(x)
+    model = Model(inputs=inp, outputs=x)
+    model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+    return model
+
 # --- Training ---
 with open(metrics_file, 'w') as f:
-    for lead in tqdm(leads_to_predict, desc="Training leads"):
-        tqdm.write(f"\n🔧 Training XGBoost model for Lead {lead}...")
+    for lead in leads_to_predict:
+        print(f"\n🔧 Training ensemble for Lead {lead}...")
         X_train_full, y_train_full = extract_features_and_targets(train_data, lead)
         X_test, y_test = extract_features_and_targets(test_data, lead)
 
         if X_train_full.size == 0 or X_test.size == 0:
-            tqdm.write(f"⚠️ No data for lead {lead}, skipping.")
+            print(f"⚠️ No data for lead {lead}, skipping.")
             continue
 
         X_train, X_val, y_train, y_val = train_test_split(
@@ -111,59 +125,43 @@ with open(metrics_file, 'w') as f:
         X_val_scaled = scaler.transform(X_val)
         X_test_scaled = scaler.transform(X_test)
 
-        param_grid = {
-        'estimator__n_estimators': [100, 150],
-        'estimator__max_depth': [4, 6],
-        'estimator__learning_rate': [0.05, 0.1],
-        'estimator__subsample': [0.8, 1.0]
-        }
-
-        # Step 1: Define base model
-        xgb_base = XGBRegressor(verbosity=0, n_jobs=-1)
-
-        # Step 2: Wrap with MultiOutput
-        multi_model = MultiOutputRegressor(xgb_base)
-
-        # Step 3: Use GridSearchCV
-        grid_search = GridSearchCV(
-        estimator=multi_model,
-        param_grid=param_grid,
-        scoring='neg_mean_squared_error',
-        cv=3,
-        verbose=1,
-        n_jobs=-1
+        # --- MLP ---
+        mlp_model = build_mlp_model(input_dim=X_train_scaled.shape[1])
+        mlp_model.fit(
+            X_train_scaled, y_train,
+            validation_data=(X_val_scaled, y_val),
+            epochs=100, batch_size=64,
+            callbacks=[EarlyStopping(patience=10, restore_best_weights=True)],
+            verbose=1
         )
+        y_pred_mlp = mlp_model.predict(X_test_scaled)
 
+        # --- XGBoost ---
+        xgb_base = XGBRegressor(n_estimators=150, learning_rate=0.1, max_depth=6, verbosity=0)
+        xgb_model = MultiOutputRegressor(xgb_base)
+        xgb_model.fit(X_train_scaled, y_train)
+        y_pred_xgb = xgb_model.predict(X_test_scaled)
 
-        # Step 4: Fit Grid Search
-        grid_search.fit(X_train_scaled, y_train)
+        # --- Ensemble (simple average) ---
+        y_pred_ens = (y_pred_mlp + y_pred_xgb) / 2
 
-        # Step 5: Use best model
-        model = grid_search.best_estimator_
-
-
-        joblib.dump(model, model_dir / f"xgb_model_lead_{lead}.pkl")
-
-        y_pred = model.predict(X_test_scaled)
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-        r2 = r2_score(y_test, y_pred)
-        corr = pearsonr(y_test.flatten(), y_pred.flatten())[0]
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred_ens))
+        r2 = r2_score(y_test, y_pred_ens)
+        corr = pearsonr(y_test.flatten(), y_pred_ens.flatten())[0]
 
         f.write(f"Lead {lead}\nRMSE: {rmse:.4f}\nR^2: {r2:.4f}\nPearson Correlation: {corr:.4f}\n\n")
-        tqdm.write(f"✅ Lead {lead}: RMSE={rmse:.4f}, R²={r2:.4f}, Corr={corr:.4f}")
+        print(f"✅ Lead {lead}: RMSE={rmse:.4f}, R²={r2:.4f}, Corr={corr:.4f}")
 
-        # Plot sample prediction
         plt.figure(figsize=(10, 4))
         plt.plot(y_test[0], label='Actual', linewidth=2)
-        plt.plot(y_pred[0], label='Predicted', linestyle='--')
-        plt.title(f"Lead {lead}: Actual vs Predicted")
+        plt.plot(y_pred_ens[0], label='Ensemble', linestyle='--')
+        plt.title(f"Lead {lead}: Actual vs Ensemble Prediction")
         plt.xlabel("Time (samples)")
         plt.ylabel("Amplitude")
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
-        plt.savefig(plot_dir / f"lead_{lead}_prediction.png")
+        plt.savefig(plot_dir / f"lead_{lead}_ensemble_prediction.png")
         plt.close()
 
-print("\n🎉 All XGBoost models trained and evaluated.")
-
+print("\n🎉 All ensemble models trained and evaluated.")

@@ -47,14 +47,15 @@ def extract_features_and_targets(data, target_lead):
             pqrst_II = seg['pqrst_lead_II']
             pqrst_V2 = seg['pqrst_lead_V2']
 
-            (_, ap1), (tq1, aq1), (tr1, ar1), (ts1, as1), (tt1, at1) = pqrst_I
-            (_, ap2), (tq2, aq2), (tr2, ar2), (ts2, as2), (tt2, at2) = pqrst_II
-            (_, ap3), (tq3, aq3), (tr3, ar3), (ts3, as3), (tt3, at3) = pqrst_V2
+            (tp1, ap1), (tq1, aq1), (tr1, ar1), (ts1, as1), (tt1, at1) = pqrst_I
+            (tp2, ap2), (tq2, aq2), (tr2, ar2), (ts2, as2), (tt2, at2) = pqrst_II
+            (tp3, ap3), (tq3, aq3), (tr3, ar3), (ts3, as3), (tt3, at3) = pqrst_V2
 
+            # New Intervals: PR, ST, QT, RR
             intervals = [
-                tr1 - tq1, ts1 - tq1, tt1 - tq1,
-                tr2 - tq2, ts2 - tq2, tt2 - tq2,
-                tr3 - tq3, ts3 - tq3, tt3 - tq3
+                tr1 - tp1, tt1 - ts1, tt1 - tq1, seg.get("rr1", 0),
+                tr2 - tp2, tt2 - ts2, tt2 - tq2, seg.get("rr2", 0),
+                tr3 - tp3, tt3 - ts3, tt3 - tq3, seg.get("rr3", 0)
             ]
 
             amplitudes = [

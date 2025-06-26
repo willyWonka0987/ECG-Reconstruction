@@ -16,7 +16,7 @@ lead_names = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5
 os.makedirs("PQRST_plots", exist_ok=True)
 
 # Load ECG dataset
-ecg_data = joblib.load("data_no_segmentation/ecg_test_clean.pkl")
+ecg_data = joblib.load("../data_no_segmentation/ecg_test_clean.pkl")
 
 def find_qspt(signal, r_peaks, sampling_rate, lead_name):
     pre_samples = int(pre_window * sampling_rate)

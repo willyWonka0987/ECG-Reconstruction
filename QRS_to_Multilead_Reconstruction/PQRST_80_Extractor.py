@@ -1,5 +1,5 @@
 # Modified to use V2 as an input like leads I and II
-# and V3 moved to other_leads to be predicted
+# Now saves rr1, rr2, rr3 (in seconds) for each segment
 
 import os
 import joblib
@@ -34,7 +34,6 @@ encoded_features = []
 if encoded_feats_path.exists():
     with open(encoded_feats_path, 'r') as f:
         encoded_features = [line.strip() for line in f.readlines()]
-
 
 def extract_stat_features(segment):
     hist, _ = np.histogram(segment, bins=10, density=True)
@@ -106,7 +105,7 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
         r_v2 = nk.ecg_peaks(nk.ecg_clean(lead_v2, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
         r_v3 = nk.ecg_peaks(nk.ecg_clean(lead_v3, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
 
-        if len(r_i) == 0 or len(r_ii) == 0 or len(r_v2) == 0 or len(r_v3) == 0:
+        if len(r_i) < 2 or len(r_ii) < 2 or len(r_v2) < 2 or len(r_v3) == 0:
             continue
 
         p_i, q_i, r_i, s_i, t_i = find_qspt(lead_i, r_i, sampling_rate)
@@ -114,7 +113,8 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
         p_v2, q_v2, r_v2, s_v2, t_v2 = find_qspt(lead_v2, r_v2, sampling_rate)
         p_v3, q_v3, r_v3, s_v3, t_v3 = find_qspt(lead_v3, r_v3, sampling_rate)
 
-        for j, r in enumerate(r_i):
+        for j in range(1, len(r_i)):
+            r = r_i[j]
             if j >= len(p_i) or j >= len(q_i) or j >= len(s_i) or j >= len(t_i):
                 continue
             r_ii_idx = np.argmin(np.abs(r_ii - r))
@@ -128,7 +128,7 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                 segment_i = lead_i[start:end]
                 segment_ii = lead_ii[start:end]
                 segment_v2 = lead_v2[start:end]
-                segment_v3 = lead_v3[start:end]
+                segment_v3 = lead_v2[start:end]
 
                 stats_i = extract_stat_features(segment_i)
                 stats_ii = extract_stat_features(segment_ii)
@@ -137,6 +137,10 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                 freq_i = extract_freq_features(segment_i, fs=sampling_rate)
                 freq_ii = extract_freq_features(segment_ii, fs=sampling_rate)
                 freq_v2 = extract_freq_features(segment_v2, fs=sampling_rate)
+
+                rr1 = (r_i[j] - r_i[j - 1]) / sampling_rate
+                rr2 = (r_ii[r_ii_idx] - r_ii[r_ii_idx - 1]) / sampling_rate if r_ii_idx > 0 else 0
+                rr3 = (r_v2[r_v2_idx] - r_v2[r_v2_idx - 1]) / sampling_rate if r_v2_idx > 0 else 0
 
                 other_leads_waveforms = {
                     lead_names[k]: sample[start:end, k] for k in range(12)
@@ -156,6 +160,9 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                                         (r_v2[r_v2_idx]/sampling_rate, lead_v2[r_v2[r_v2_idx]]),
                                         (s_v2[r_v2_idx]/sampling_rate, lead_v2[s_v2[r_v2_idx]]),
                                         (t_v2[r_v2_idx]/sampling_rate, lead_v2[t_v2[r_v2_idx]])],
+                    "rr1": rr1,
+                    "rr2": rr2,
+                    "rr3": rr3,
                     "stats_lead_I": stats_i,
                     "stats_lead_II": stats_ii,
                     "stats_lead_V2": stats_v2,
@@ -169,7 +176,6 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                     **onehot_features,
                     "source_index": i
                 })
-
     return dataset
 
 if __name__ == "__main__":
@@ -187,4 +193,3 @@ if __name__ == "__main__":
     joblib.dump(train_set, output_dir / "pqrst_stats_train_80.pkl")
     joblib.dump(test_set, output_dir / "pqrst_stats_test_80.pkl")
     print("✅ Done with V2-based PQRST dataset!")
-

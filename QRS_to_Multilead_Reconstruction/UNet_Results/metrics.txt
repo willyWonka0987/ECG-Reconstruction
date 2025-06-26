@@ -1,5 +1,0 @@
-Lead V1
-RMSE: 0.0822
-R^2: 0.3935
-Pearson Correlation: 0.8958
-

@@ -51,40 +51,62 @@ def extract_features_and_targets(data, target_lead):
             (tp2, ap2), (tq2, aq2), (tr2, ar2), (ts2, as2), (tt2, at2) = pqrst_II
             (tp3, ap3), (tq3, aq3), (tr3, ar3), (ts3, as3), (tt3, at3) = pqrst_V2
 
-            # New Intervals: PR, ST, QT, RR
+            # --- Intervals ---
             intervals = [
                 tr1 - tp1, tt1 - ts1, tt1 - tq1, seg.get("rr1", 0),
                 tr2 - tp2, tt2 - ts2, tt2 - tq2, seg.get("rr2", 0),
                 tr3 - tp3, tt3 - ts3, tt3 - tq3, seg.get("rr3", 0)
             ]
 
+            # --- Amplitudes ---
             amplitudes = [
                 aq1, ar1, as1, at1,
                 aq2, ar2, as2, at2,
                 aq3, ar3, as3, at3
             ]
 
+            # --- New QRS/T features ---
+            qrs_t_features = [
+                seg.get("qrs_area_I", 0),
+                seg.get("qrs_area_II", 0),
+                seg.get("qrs_area_V2", 0),
+                seg.get("qrs_dur_I", 0),
+                seg.get("qrs_dur_II", 0),
+                seg.get("qrs_dur_V2", 0),
+                seg.get("t_area_I", 0),
+                seg.get("t_area_II", 0),
+                seg.get("t_area_V2", 0)
+            ]
+
+            # --- Demographics ---
             age = seg.get("age", 0)
             sex = 1 if str(seg.get("sex", "M")).upper().startswith("M") else 0
             hr = seg.get("hr", 0)
             onehot_values = [seg.get(name, 0) for name in encoded_features]
 
+            # --- Statistical features ---
             stats_features = (
                 list(seg['stats_lead_I'].values()) +
                 list(seg['stats_lead_II'].values()) +
                 list(seg['stats_lead_V2'].values())
             )
 
+            # --- Frequency features ---
             freq_features = (
                 list(seg['freq_lead_I'].values()) +
                 list(seg['freq_lead_II'].values()) +
                 list(seg['freq_lead_V2'].values())
             )
 
+            # --- Combined feature vector ---
             features = (
-                intervals + amplitudes +
-                [age, sex, hr] + onehot_values +
-                stats_features + freq_features
+                intervals + 
+                amplitudes + 
+                qrs_t_features + 
+                [age, sex, hr] + 
+                onehot_values + 
+                stats_features + 
+                freq_features
             )
 
             target = seg['other_leads'][target_lead]
@@ -127,7 +149,9 @@ with open(metrics_file, 'w') as f:
         X_test_scaled = scaler.transform(X_test)
 
         # --- Base Models ---
-        xgb_model = MultiOutputRegressor(XGBRegressor(n_estimators=150, learning_rate=0.1, max_depth=6, verbosity=0))
+        xgb_model = MultiOutputRegressor(
+            XGBRegressor(n_estimators=150, learning_rate=0.1, max_depth=6, verbosity=0)
+        )
         xgb_model.fit(X_train_scaled, y_train)
 
         mlp_model = build_mlp_model(input_dim=X_train_scaled.shape[1])
@@ -138,6 +162,7 @@ with open(metrics_file, 'w') as f:
             callbacks=[EarlyStopping(patience=10, restore_best_weights=True)],
             verbose=1
         )
+
         y_pred_mlp_train = mlp_model.predict(X_train_scaled)
         y_pred_xgb_train = xgb_model.predict(X_train_scaled)
 
@@ -172,4 +197,3 @@ with open(metrics_file, 'w') as f:
         plt.close()
 
 print("\n🎉 All stacked ensemble models trained and evaluated.")
-

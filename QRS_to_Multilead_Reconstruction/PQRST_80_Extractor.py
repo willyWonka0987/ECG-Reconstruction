@@ -1,12 +1,8 @@
-# Modified to use V2 as an input like leads I and II
-# Now saves rr1, rr2, rr3 (in seconds) for each segment
-
 import os
 import joblib
 import neurokit2 as nk
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 from tqdm import tqdm
 from scipy.stats import skew, kurtosis, entropy
@@ -65,27 +61,40 @@ def find_qspt(signal, r_peaks, sampling_rate):
     post_samples = int(0.12 * sampling_rate)
     q_points, s_points, p_points, t_points = [], [], [], []
     for r in r_peaks:
+        # Q
         q_start = max(0, r - pre_samples)
         q_seg = signal[q_start:r]
         q = q_start + np.argmin(q_seg) if len(q_seg) > 0 else r
         q_points.append(q)
+        # S
         s_end = min(len(signal), r + post_samples)
         s_seg = signal[r:s_end]
         s = r + np.argmin(s_seg) if len(s_seg) > 0 else r
         s_points.append(s)
+        # P
         p_start = max(0, q - int(0.15 * sampling_rate))
         p_seg = signal[p_start:q]
         p = p_start + np.argmax(p_seg) if len(p_seg) > 0 else q
         p_points.append(p)
+        # T
         t_end = min(len(signal), s + int(0.4 * sampling_rate))
         t_seg = signal[s:t_end]
         t = s + np.argmax(t_seg) if len(t_seg) > 0 else s
         t_points.append(t)
     return np.array(p_points), np.array(q_points), np.array(r_peaks), np.array(s_points), np.array(t_points)
 
+def compute_area(signal, start, end):
+    if start is None or end is None or end <= start:
+        return np.nan
+    return np.trapz(signal[start:end], dx=1.0/sampling_rate)
+
+def compute_duration(start, end):
+    if start is None or end is None or end <= start:
+        return np.nan
+    return (end - start) / sampling_rate
+
 def build_dataset_with_stats(ecg_dataset, meta_df):
     dataset = []
-
     for i, sample in enumerate(tqdm(ecg_dataset, desc="Building dataset with stats (80 samples)")):
         if i >= len(meta_df):
             break
@@ -122,61 +131,95 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
             r_v3_idx = np.argmin(np.abs(r_v3 - r))
             if r_ii_idx >= len(p_ii) or r_v2_idx >= len(p_v2) or r_v3_idx >= len(p_v3):
                 continue
-
             start, end = r - padding, r + padding
-            if start >= 0 and end <= sample.shape[0]:
-                segment_i = lead_i[start:end]
-                segment_ii = lead_ii[start:end]
-                segment_v2 = lead_v2[start:end]
-                segment_v3 = lead_v2[start:end]
+            if start < 0 or end > sample.shape[0]:
+                continue
 
-                stats_i = extract_stat_features(segment_i)
-                stats_ii = extract_stat_features(segment_ii)
-                stats_v2 = extract_stat_features(segment_v2)
+            segment_i = lead_i[start:end]
+            segment_ii = lead_ii[start:end]
+            segment_v2 = lead_v2[start:end]
 
-                freq_i = extract_freq_features(segment_i, fs=sampling_rate)
-                freq_ii = extract_freq_features(segment_ii, fs=sampling_rate)
-                freq_v2 = extract_freq_features(segment_v2, fs=sampling_rate)
+            stats_i = extract_stat_features(segment_i)
+            stats_ii = extract_stat_features(segment_ii)
+            stats_v2 = extract_stat_features(segment_v2)
+            freq_i = extract_freq_features(segment_i, fs=sampling_rate)
+            freq_ii = extract_freq_features(segment_ii, fs=sampling_rate)
+            freq_v2 = extract_freq_features(segment_v2, fs=sampling_rate)
 
-                rr1 = (r_i[j] - r_i[j - 1]) / sampling_rate
-                rr2 = (r_ii[r_ii_idx] - r_ii[r_ii_idx - 1]) / sampling_rate if r_ii_idx > 0 else 0
-                rr3 = (r_v2[r_v2_idx] - r_v2[r_v2_idx - 1]) / sampling_rate if r_v2_idx > 0 else 0
+            rr1 = (r_i[j] - r_i[j - 1]) / sampling_rate
+            rr2 = (r_ii[r_ii_idx] - r_ii[r_ii_idx - 1]) / sampling_rate if r_ii_idx > 0 else 0
+            rr3 = (r_v2[r_v2_idx] - r_v2[r_v2_idx - 1]) / sampling_rate if r_v2_idx > 0 else 0
 
-                other_leads_waveforms = {
-                    lead_names[k]: sample[start:end, k] for k in range(12)
-                    if k not in [0, 1, lead_names.index('V2')]
-                }
+            # QRS area and duration
+            qrs_area_i = compute_area(lead_i, q_i[j], s_i[j])
+            qrs_area_ii = compute_area(lead_ii, q_ii[r_ii_idx], s_ii[r_ii_idx])
+            qrs_area_v2 = compute_area(lead_v2, q_v2[r_v2_idx], s_v2[r_v2_idx])
+            qrs_dur_i = compute_duration(q_i[j], s_i[j])
+            qrs_dur_ii = compute_duration(q_ii[r_ii_idx], s_ii[r_ii_idx])
+            qrs_dur_v2 = compute_duration(q_v2[r_v2_idx], s_v2[r_v2_idx])
+            t_area_i = compute_area(lead_i, s_i[j], t_i[j])
+            t_area_ii = compute_area(lead_ii, s_ii[r_ii_idx], t_ii[r_ii_idx])
+            t_area_v2 = compute_area(lead_v2, s_v2[r_v2_idx], t_v2[r_v2_idx])
 
-                dataset.append({
-                    "pqrst_lead_I": [(p_i[j]/sampling_rate, lead_i[p_i[j]]), (q_i[j]/sampling_rate, lead_i[q_i[j]]),
-                                       (r/sampling_rate, lead_i[r]), (s_i[j]/sampling_rate, lead_i[s_i[j]]), (t_i[j]/sampling_rate, lead_i[t_i[j]])],
-                    "pqrst_lead_II": [(p_ii[r_ii_idx]/sampling_rate, lead_ii[p_ii[r_ii_idx]]),
-                                        (q_ii[r_ii_idx]/sampling_rate, lead_ii[q_ii[r_ii_idx]]),
-                                        (r_ii[r_ii_idx]/sampling_rate, lead_ii[r_ii[r_ii_idx]]),
-                                        (s_ii[r_ii_idx]/sampling_rate, lead_ii[s_ii[r_ii_idx]]),
-                                        (t_ii[r_ii_idx]/sampling_rate, lead_ii[t_ii[r_ii_idx]])],
-                    "pqrst_lead_V2": [(p_v2[r_v2_idx]/sampling_rate, lead_v2[p_v2[r_v2_idx]]),
-                                        (q_v2[r_v2_idx]/sampling_rate, lead_v2[q_v2[r_v2_idx]]),
-                                        (r_v2[r_v2_idx]/sampling_rate, lead_v2[r_v2[r_v2_idx]]),
-                                        (s_v2[r_v2_idx]/sampling_rate, lead_v2[s_v2[r_v2_idx]]),
-                                        (t_v2[r_v2_idx]/sampling_rate, lead_v2[t_v2[r_v2_idx]])],
-                    "rr1": rr1,
-                    "rr2": rr2,
-                    "rr3": rr3,
-                    "stats_lead_I": stats_i,
-                    "stats_lead_II": stats_ii,
-                    "stats_lead_V2": stats_v2,
-                    "freq_lead_I": freq_i,
-                    "freq_lead_II": freq_ii,
-                    "freq_lead_V2": freq_v2,
-                    "other_leads": other_leads_waveforms,
-                    "age": age,
-                    "sex": sex,
-                    "hr": hr,
-                    **onehot_features,
-                    "source_index": i
-                })
+            # --- NaN/Inf check: skip if any feature is NaN or Inf ---
+            features_to_check = [
+                qrs_area_i, qrs_area_ii, qrs_area_v2,
+                qrs_dur_i, qrs_dur_ii, qrs_dur_v2,
+                t_area_i, t_area_ii, t_area_v2,
+                rr1, rr2, rr3
+            ]
+            stats_list = list(stats_i.values()) + list(stats_ii.values()) + list(stats_v2.values())
+            freq_list = list(freq_i.values()) + list(freq_ii.values()) + list(freq_v2.values())
+            features_to_check += stats_list + freq_list
+
+            if any(np.isnan(f) or np.isinf(f) for f in features_to_check):
+                continue
+
+            other_leads_waveforms = {
+                lead_names[k]: sample[start:end, k] for k in range(12)
+                if k not in [0, 1, lead_names.index('V2')]
+            }
+
+            dataset.append({
+                "pqrst_lead_I": [(p_i[j]/sampling_rate, lead_i[p_i[j]]), (q_i[j]/sampling_rate, lead_i[q_i[j]]),
+                                 (r/sampling_rate, lead_i[r]), (s_i[j]/sampling_rate, lead_i[s_i[j]]), (t_i[j]/sampling_rate, lead_i[t_i[j]])],
+                "pqrst_lead_II": [(p_ii[r_ii_idx]/sampling_rate, lead_ii[p_ii[r_ii_idx]]),
+                                  (q_ii[r_ii_idx]/sampling_rate, lead_ii[q_ii[r_ii_idx]]),
+                                  (r_ii[r_ii_idx]/sampling_rate, lead_ii[r_ii[r_ii_idx]]),
+                                  (s_ii[r_ii_idx]/sampling_rate, lead_ii[s_ii[r_ii_idx]]),
+                                  (t_ii[r_ii_idx]/sampling_rate, lead_ii[t_ii[r_ii_idx]])],
+                "pqrst_lead_V2": [(p_v2[r_v2_idx]/sampling_rate, lead_v2[p_v2[r_v2_idx]]),
+                                  (q_v2[r_v2_idx]/sampling_rate, lead_v2[q_v2[r_v2_idx]]),
+                                  (r_v2[r_v2_idx]/sampling_rate, lead_v2[r_v2[r_v2_idx]]),
+                                  (s_v2[r_v2_idx]/sampling_rate, lead_v2[s_v2[r_v2_idx]]),
+                                  (t_v2[r_v2_idx]/sampling_rate, lead_v2[t_v2[r_v2_idx]])],
+                "rr1": rr1,
+                "rr2": rr2,
+                "rr3": rr3,
+                "qrs_area_I": qrs_area_i,
+                "qrs_area_II": qrs_area_ii,
+                "qrs_area_V2": qrs_area_v2,
+                "qrs_dur_I": qrs_dur_i,
+                "qrs_dur_II": qrs_dur_ii,
+                "qrs_dur_V2": qrs_dur_v2,
+                "t_area_I": t_area_i,
+                "t_area_II": t_area_ii,
+                "t_area_V2": t_area_v2,
+                "stats_lead_I": stats_i,
+                "stats_lead_II": stats_ii,
+                "stats_lead_V2": stats_v2,
+                "freq_lead_I": freq_i,
+                "freq_lead_II": freq_ii,
+                "freq_lead_V2": freq_v2,
+                "other_leads": other_leads_waveforms,
+                "age": age,
+                "sex": sex,
+                "hr": hr,
+                **onehot_features,
+                "source_index": i
+            })
     return dataset
+
 
 if __name__ == "__main__":
     print("Loading data...")
@@ -184,12 +227,10 @@ if __name__ == "__main__":
     test_data = joblib.load(input_test_path)
     train_meta = pd.read_csv(meta_train_path)
     test_meta = pd.read_csv(meta_test_path)
-
     print("Building datasets with stats (80 samples)...")
     train_set = build_dataset_with_stats(train_data, train_meta)
     test_set = build_dataset_with_stats(test_data, test_meta)
-
     print("Saving...")
     joblib.dump(train_set, output_dir / "pqrst_stats_train_80.pkl")
     joblib.dump(test_set, output_dir / "pqrst_stats_test_80.pkl")
-    print("✅ Done with V2-based PQRST dataset!")
+    print("✅ Done with V2-based PQRST dataset including QRS/T area and duration features!")

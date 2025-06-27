@@ -65,7 +65,7 @@ def extract_features_and_targets(data, target_lead):
                 aq3, ar3, as3, at3
             ]
 
-            # --- New QRS/T features ---
+            # --- QRS/T features ---
             qrs_t_features = [
                 seg.get("qrs_area_I", 0),
                 seg.get("qrs_area_II", 0),
@@ -77,6 +77,16 @@ def extract_features_and_targets(data, target_lead):
                 seg.get("t_area_II", 0),
                 seg.get("t_area_V2", 0)
             ]
+
+            # --- Slope features ---
+            slope_i = seg.get("slope_lead_I", {})
+            slope_ii = seg.get("slope_lead_II", {})
+            slope_v2 = seg.get("slope_lead_V2", {})
+            slope_features = (
+                list(slope_i.values()) +
+                list(slope_ii.values()) +
+                list(slope_v2.values())
+            )
 
             # --- Demographics ---
             age = seg.get("age", 0)
@@ -100,12 +110,13 @@ def extract_features_and_targets(data, target_lead):
 
             # --- Combined feature vector ---
             features = (
-                intervals + 
-                amplitudes + 
-                qrs_t_features + 
-                [age, sex, hr] + 
-                onehot_values + 
-                stats_features + 
+                intervals +
+                amplitudes +
+                qrs_t_features +
+                slope_features +
+                [age, sex, hr] +
+                onehot_values +
+                stats_features +
                 freq_features
             )
 

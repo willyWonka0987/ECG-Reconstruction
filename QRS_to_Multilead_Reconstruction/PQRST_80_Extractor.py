@@ -31,6 +31,7 @@ if encoded_feats_path.exists():
     with open(encoded_feats_path, 'r') as f:
         encoded_features = [line.strip() for line in f.readlines()]
 
+# --- Feature Extraction Functions ---
 def extract_stat_features(segment):
     hist, _ = np.histogram(segment, bins=10, density=True)
     return {
@@ -54,6 +55,31 @@ def extract_freq_features(segment, fs=100):
         'psd_total': psd_sum,
         'dominant_freq': dom_freq,
         'wavelet_energy': wavelet_energy
+    }
+
+def extract_slope_features(segment, fs=100):
+    """Compute slope-based features using first derivative"""
+    # Calculate first derivative (slope)
+    dx = 1.0 / fs
+    slope = np.diff(segment) / dx
+    
+    # Critical slope points
+    max_slope = np.max(slope)
+    min_slope = np.min(slope)
+    mean_slope = np.mean(slope)
+    zero_crossings = len(np.where(np.diff(np.sign(slope)))[0])
+    
+    # Slope between critical points
+    qrs_slope = (segment[20] - segment[0]) / (20 * dx) if len(segment) > 20 else 0
+    st_slope = (segment[-1] - segment[40]) / ((len(segment)-41) * dx) if len(segment) > 40 else 0
+    
+    return {
+        'max_slope': max_slope,
+        'min_slope': min_slope,
+        'mean_slope': mean_slope,
+        'zero_crossings': zero_crossings,
+        'qrs_slope': qrs_slope,
+        'st_slope': st_slope
     }
 
 def find_qspt(signal, r_peaks, sampling_rate):
@@ -82,7 +108,7 @@ def find_qspt(signal, r_peaks, sampling_rate):
 def compute_area(signal, start, end):
     if start is None or end is None or end <= start:
         return np.nan
-    return np.trapz(signal[start:end], dx=1.0/sampling_rate)
+    return np.trapz(signal[int(start):int(end)], dx=1.0/sampling_rate)
 
 def compute_duration(start, end):
     if start is None or end is None or end <= start:
@@ -114,7 +140,7 @@ def collect_amplitude_statistics(ecg_dataset, meta_df):
         p_i, q_i, r_i, s_i, t_i = find_qspt(lead_i, r_i, sampling_rate)
         p_ii, q_ii, r_ii, s_ii, t_ii = find_qspt(lead_ii, r_ii, sampling_rate)
         p_v2, q_v2, r_v2, s_v2, t_v2 = find_qspt(lead_v2, r_v2, sampling_rate)
-        p_v3, q_v3, r_v3, s_v3, t_v3 = find_qspt(lead_v3, r_v3, sampling_rate)
+        p_v3, q_v3, r_v3, s_v3, t极3 = find_qspt(lead_v3, r_v3, sampling_rate)
 
         for j in range(1, len(r_i)):
             r = r_i[j]
@@ -152,15 +178,14 @@ def collect_amplitude_statistics(ecg_dataset, meta_df):
             'std': std,
             'lower_bound': mean - 3 * std,
             'upper_bound': mean + 3 * std
-
         }
-        print(f"{wave}-wave: Mean={mean:.3f}, Std={std:.3f}, Range=[{mean-2*std:.3f}, {mean+2*std:.3f}]")
+        print(f"{wave}-wave: Mean={mean:.3f}, Std={std:.3f}, Range=[{mean-3*std:.3f}, {mean+3*std:.3f}]")
     
     return amplitude_stats
 
 def build_dataset_with_stats(ecg_dataset, meta_df, amplitude_stats):
-    """Second pass: build dataset with outlier filtering"""
-    print("\n🔧 Second pass: Building dataset with outlier filtering...")
+    """Second pass: build dataset with outlier filtering and slope features"""
+    print("\n🔧 Second pass: Building dataset with outlier filtering and slope features...")
     dataset = []
     total_segments_processed = 0
     segments_filtered_by_amplitude = 0
@@ -234,18 +259,24 @@ def build_dataset_with_stats(ecg_dataset, meta_df, amplitude_stats):
             segment_ii = lead_ii[start:end]
             segment_v2 = lead_v2[start:end]
 
+            # --- Extract features ---
             stats_i = extract_stat_features(segment_i)
             stats_ii = extract_stat_features(segment_ii)
             stats_v2 = extract_stat_features(segment_v2)
+            
             freq_i = extract_freq_features(segment_i, fs=sampling_rate)
             freq_ii = extract_freq_features(segment_ii, fs=sampling_rate)
             freq_v2 = extract_freq_features(segment_v2, fs=sampling_rate)
+            
+            # --- NEW: Slope features ---
+            slope_i = extract_slope_features(segment_i, fs=sampling_rate)
+            slope_ii = extract_slope_features(segment_ii, fs=sampling_rate)
+            slope_v2 = extract_slope_features(segment_v2, fs=sampling_rate)
 
             rr1 = (r_i[j] - r_i[j - 1]) / sampling_rate
             rr2 = (r_ii[r_ii_idx] - r_ii[r_ii_idx - 1]) / sampling_rate if r_ii_idx > 0 else 0
             rr3 = (r_v2[r_v2_idx] - r_v2[r_v2_idx - 1]) / sampling_rate if r_v2_idx > 0 else 0
 
-            # QRS area and duration
             qrs_area_i = compute_area(lead_i, q_i[j], s_i[j])
             qrs_area_ii = compute_area(lead_ii, q_ii[r_ii_idx], s_ii[r_ii_idx])
             qrs_area_v2 = compute_area(lead_v2, q_v2[r_v2_idx], s_v2[r_v2_idx])
@@ -256,16 +287,15 @@ def build_dataset_with_stats(ecg_dataset, meta_df, amplitude_stats):
             t_area_ii = compute_area(lead_ii, s_ii[r_ii_idx], t_ii[r_ii_idx])
             t_area_v2 = compute_area(lead_v2, s_v2[r_v2_idx], t_v2[r_v2_idx])
 
-            # --- NaN/Inf check: skip if any feature is NaN or Inf ---
+            # --- Feature validation ---
             features_to_check = [
                 qrs_area_i, qrs_area_ii, qrs_area_v2,
                 qrs_dur_i, qrs_dur_ii, qrs_dur_v2,
                 t_area_i, t_area_ii, t_area_v2,
                 rr1, rr2, rr3
-            ]
-            stats_list = list(stats_i.values()) + list(stats_ii.values()) + list(stats_v2.values())
-            freq_list = list(freq_i.values()) + list(freq_ii.values()) + list(freq_v2.values())
-            features_to_check += stats_list + freq_list
+            ] + list(stats_i.values()) + list(stats_ii.values()) + list(stats_v2.values()) + \
+                list(freq_i.values()) + list(freq_ii.values()) + list(freq_v2.values()) + \
+                list(slope_i.values()) + list(slope_ii.values()) + list(slope_v2.values())
 
             if any(np.isnan(f) or np.isinf(f) for f in features_to_check):
                 segments_filtered_by_nan += 1
@@ -307,6 +337,10 @@ def build_dataset_with_stats(ecg_dataset, meta_df, amplitude_stats):
                 "freq_lead_I": freq_i,
                 "freq_lead_II": freq_ii,
                 "freq_lead_V2": freq_v2,
+                # --- NEW: Slope features ---
+                "slope_lead_I": slope_i,
+                "slope_lead_II": slope_ii,
+                "slope_lead_V2": slope_v2,
                 "other_leads": other_leads_waveforms,
                 "age": age,
                 "sex": sex,
@@ -347,4 +381,4 @@ if __name__ == "__main__":
     print(f"\n✅ Final Results:")
     print(f"Training dataset: {len(train_set)} segments")
     print(f"Test dataset: {len(test_set)} segments")
-    print("Done with V2-based PQRST dataset including QRS/T area and duration features!")
+    print("Done with enhanced PQRST dataset including QRS/T area, duration, and slope features!")

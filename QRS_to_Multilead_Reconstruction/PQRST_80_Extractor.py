@@ -61,22 +61,18 @@ def find_qspt(signal, r_peaks, sampling_rate):
     post_samples = int(0.12 * sampling_rate)
     q_points, s_points, p_points, t_points = [], [], [], []
     for r in r_peaks:
-        # Q
         q_start = max(0, r - pre_samples)
         q_seg = signal[q_start:r]
         q = q_start + np.argmin(q_seg) if len(q_seg) > 0 else r
         q_points.append(q)
-        # S
         s_end = min(len(signal), r + post_samples)
         s_seg = signal[r:s_end]
         s = r + np.argmin(s_seg) if len(s_seg) > 0 else r
         s_points.append(s)
-        # P
         p_start = max(0, q - int(0.15 * sampling_rate))
         p_seg = signal[p_start:q]
         p = p_start + np.argmax(p_seg) if len(p_seg) > 0 else q
         p_points.append(p)
-        # T
         t_end = min(len(signal), s + int(0.4 * sampling_rate))
         t_seg = signal[s:t_end]
         t = s + np.argmax(t_seg) if len(t_seg) > 0 else s
@@ -93,17 +89,15 @@ def compute_duration(start, end):
         return np.nan
     return (end - start) / sampling_rate
 
-def build_dataset_with_stats(ecg_dataset, meta_df):
-    dataset = []
-    for i, sample in enumerate(tqdm(ecg_dataset, desc="Building dataset with stats (80 samples)")):
+def collect_amplitude_statistics(ecg_dataset, meta_df):
+    """First pass: collect all PQRST amplitudes to calculate global statistics"""
+    print("📊 First pass: Collecting amplitude statistics...")
+    all_amplitudes = {'P': [], 'Q': [], 'R': [], 'S': [], 'T': []}
+    
+    for i, sample in enumerate(tqdm(ecg_dataset, desc="Collecting amplitudes")):
         if i >= len(meta_df):
             break
-        row_meta = meta_df.iloc[i]
-        age = row_meta.get("age", 0)
-        sex = row_meta.get("sex", 0)
-        hr = row_meta.get("hr", 0)
-        onehot_features = {key: row_meta.get(key, 0) for key in encoded_features}
-
+        
         lead_i = sample[:, 0]
         lead_ii = sample[:, 1]
         lead_v2 = sample[:, lead_names.index('V2')]
@@ -133,6 +127,107 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                 continue
             start, end = r - padding, r + padding
             if start < 0 or end > sample.shape[0]:
+                continue
+
+            # Collect amplitudes from all three leads
+            amplitudes = [
+                lead_i[p_i[j]], lead_i[q_i[j]], lead_i[r], lead_i[s_i[j]], lead_i[t_i[j]],
+                lead_ii[p_ii[r_ii_idx]], lead_ii[q_ii[r_ii_idx]], lead_ii[r_ii[r_ii_idx]], 
+                lead_ii[s_ii[r_ii_idx]], lead_ii[t_ii[r_ii_idx]],
+                lead_v2[p_v2[r_v2_idx]], lead_v2[q_v2[r_v2_idx]], lead_v2[r_v2[r_v2_idx]], 
+                lead_v2[s_v2[r_v2_idx]], lead_v2[t_v2[r_v2_idx]]
+            ]
+            
+            for k, wave in enumerate(['P', 'Q', 'R', 'S', 'T']):
+                all_amplitudes[wave].extend([amplitudes[k], amplitudes[k+5], amplitudes[k+10]])
+
+    # Calculate statistics for each wave
+    amplitude_stats = {}
+    for wave in ['P', 'Q', 'R', 'S', 'T']:
+        data = np.array(all_amplitudes[wave])
+        mean = np.mean(data)
+        std = np.std(data)
+        amplitude_stats[wave] = {
+            'mean': mean,
+            'std': std,
+            'lower_bound': mean - 3 * std,
+            'upper_bound': mean + 3 * std
+
+        }
+        print(f"{wave}-wave: Mean={mean:.3f}, Std={std:.3f}, Range=[{mean-2*std:.3f}, {mean+2*std:.3f}]")
+    
+    return amplitude_stats
+
+def build_dataset_with_stats(ecg_dataset, meta_df, amplitude_stats):
+    """Second pass: build dataset with outlier filtering"""
+    print("\n🔧 Second pass: Building dataset with outlier filtering...")
+    dataset = []
+    total_segments_processed = 0
+    segments_filtered_by_amplitude = 0
+    segments_filtered_by_nan = 0
+    
+    for i, sample in enumerate(tqdm(ecg_dataset, desc="Building filtered dataset")):
+        if i >= len(meta_df):
+            break
+        row_meta = meta_df.iloc[i]
+        age = row_meta.get("age", 0)
+        sex = row_meta.get("sex", 0)
+        hr = row_meta.get("hr", 0)
+        onehot_features = {key: row_meta.get(key, 0) for key in encoded_features}
+
+        lead_i = sample[:, 0]
+        lead_ii = sample[:, 1]
+        lead_v2 = sample[:, lead_names.index('V2')]
+        lead_v3 = sample[:, lead_names.index('V3')]
+
+        r_i = nk.ecg_peaks(nk.ecg_clean(lead_i, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
+        r_ii = nk.ecg_peaks(nk.ecg_clean(lead_ii, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
+        r_v2 = nk.ecg_peaks(nk.ecg_clean(lead_v2, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
+        r_v3 = nk.ecg_peaks(nk.ecg_clean(lead_v3, sampling_rate), sampling_rate)[1]['ECG_R_Peaks']
+
+        if len(r_i) < 2 or len(r_ii) < 2 or len(r_v2) < 2 or len(r_v3) == 0:
+            continue
+
+        p_i, q_i, r_i, s_i, t_i = find_qspt(lead_i, r_i, sampling_rate)
+        p_ii, q_ii, r_ii, s_ii, t_ii = find_qspt(lead_ii, r_ii, sampling_rate)
+        p_v2, q_v2, r_v2, s_v2, t_v2 = find_qspt(lead_v2, r_v2, sampling_rate)
+        p_v3, q_v3, r_v3, s_v3, t_v3 = find_qspt(lead_v3, r_v3, sampling_rate)
+
+        for j in range(1, len(r_i)):
+            total_segments_processed += 1
+            r = r_i[j]
+            if j >= len(p_i) or j >= len(q_i) or j >= len(s_i) or j >= len(t_i):
+                continue
+            r_ii_idx = np.argmin(np.abs(r_ii - r))
+            r_v2_idx = np.argmin(np.abs(r_v2 - r))
+            r_v3_idx = np.argmin(np.abs(r_v3 - r))
+            if r_ii_idx >= len(p_ii) or r_v2_idx >= len(p_v2) or r_v3_idx >= len(p_v3):
+                continue
+            start, end = r - padding, r + padding
+            if start < 0 or end > sample.shape[0]:
+                continue
+
+            # --- AMPLITUDE OUTLIER CHECK ---
+            amplitudes_to_check = [
+                ('P', lead_i[p_i[j]]), ('Q', lead_i[q_i[j]]), ('R', lead_i[r]), 
+                ('S', lead_i[s_i[j]]), ('T', lead_i[t_i[j]]),
+                ('P', lead_ii[p_ii[r_ii_idx]]), ('Q', lead_ii[q_ii[r_ii_idx]]), 
+                ('R', lead_ii[r_ii[r_ii_idx]]), ('S', lead_ii[s_ii[r_ii_idx]]), 
+                ('T', lead_ii[t_ii[r_ii_idx]]),
+                ('P', lead_v2[p_v2[r_v2_idx]]), ('Q', lead_v2[q_v2[r_v2_idx]]), 
+                ('R', lead_v2[r_v2[r_v2_idx]]), ('S', lead_v2[s_v2[r_v2_idx]]), 
+                ('T', lead_v2[t_v2[r_v2_idx]])
+            ]
+            
+            is_amplitude_outlier = False
+            for wave_type, amplitude in amplitudes_to_check:
+                stats = amplitude_stats[wave_type]
+                if amplitude < stats['lower_bound'] or amplitude > stats['upper_bound']:
+                    is_amplitude_outlier = True
+                    break
+            
+            if is_amplitude_outlier:
+                segments_filtered_by_amplitude += 1
                 continue
 
             segment_i = lead_i[start:end]
@@ -173,6 +268,7 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
             features_to_check += stats_list + freq_list
 
             if any(np.isnan(f) or np.isinf(f) for f in features_to_check):
+                segments_filtered_by_nan += 1
                 continue
 
             other_leads_waveforms = {
@@ -218,8 +314,16 @@ def build_dataset_with_stats(ecg_dataset, meta_df):
                 **onehot_features,
                 "source_index": i
             })
+    
+    # Print filtering statistics
+    print(f"\n📊 Filtering Statistics:")
+    print(f"Total segments processed: {total_segments_processed}")
+    print(f"Segments filtered due to amplitude outliers (>3σ): {segments_filtered_by_amplitude}")
+    print(f"Segments filtered due to NaN/Inf features: {segments_filtered_by_nan}")
+    print(f"Remaining segments in dataset: {len(dataset)}")
+    print(f"Retention rate: {len(dataset)/total_segments_processed*100:.1f}%")
+    
     return dataset
-
 
 if __name__ == "__main__":
     print("Loading data...")
@@ -227,10 +331,20 @@ if __name__ == "__main__":
     test_data = joblib.load(input_test_path)
     train_meta = pd.read_csv(meta_train_path)
     test_meta = pd.read_csv(meta_test_path)
-    print("Building datasets with stats (80 samples)...")
-    train_set = build_dataset_with_stats(train_data, train_meta)
-    test_set = build_dataset_with_stats(test_data, test_meta)
-    print("Saving...")
+    
+    print("\n=== TRAINING DATASET ===")
+    train_amplitude_stats = collect_amplitude_statistics(train_data, train_meta)
+    train_set = build_dataset_with_stats(train_data, train_meta, train_amplitude_stats)
+    
+    print("\n=== TEST DATASET ===")
+    test_amplitude_stats = collect_amplitude_statistics(test_data, test_meta)
+    test_set = build_dataset_with_stats(test_data, test_meta, test_amplitude_stats)
+    
+    print("\nSaving...")
     joblib.dump(train_set, output_dir / "pqrst_stats_train_80.pkl")
     joblib.dump(test_set, output_dir / "pqrst_stats_test_80.pkl")
-    print("✅ Done with V2-based PQRST dataset including QRS/T area and duration features!")
+    
+    print(f"\n✅ Final Results:")
+    print(f"Training dataset: {len(train_set)} segments")
+    print(f"Test dataset: {len(test_set)} segments")
+    print("Done with V2-based PQRST dataset including QRS/T area and duration features!")

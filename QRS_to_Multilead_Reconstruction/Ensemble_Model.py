@@ -1,3 +1,6 @@
+import os
+os.environ.pop("CUDA_VISIBLE_DEVICES", None)  # Enable GPU usage
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -51,76 +54,40 @@ def extract_features_and_targets(data, target_lead):
             (tp2, ap2), (tq2, aq2), (tr2, ar2), (ts2, as2), (tt2, at2) = pqrst_II
             (tp3, ap3), (tq3, aq3), (tr3, ar3), (ts3, as3), (tt3, at3) = pqrst_V2
 
-            # --- Intervals ---
             intervals = [
                 tr1 - tp1, tt1 - ts1, tt1 - tq1, seg.get("rr1", 0),
                 tr2 - tp2, tt2 - ts2, tt2 - tq2, seg.get("rr2", 0),
                 tr3 - tp3, tt3 - ts3, tt3 - tq3, seg.get("rr3", 0)
             ]
 
-            # --- Amplitudes ---
             amplitudes = [
                 aq1, ar1, as1, at1,
                 aq2, ar2, as2, at2,
                 aq3, ar3, as3, at3
             ]
 
-            # --- QRS/T features ---
             qrs_t_features = [
-                seg.get("qrs_area_I", 0),
-                seg.get("qrs_area_II", 0),
-                seg.get("qrs_area_V2", 0),
-                seg.get("qrs_dur_I", 0),
-                seg.get("qrs_dur_II", 0),
-                seg.get("qrs_dur_V2", 0),
-                seg.get("t_area_I", 0),
-                seg.get("t_area_II", 0),
-                seg.get("t_area_V2", 0)
+                seg.get("qrs_area_I", 0), seg.get("qrs_area_II", 0), seg.get("qrs_area_V2", 0),
+                seg.get("qrs_dur_I", 0), seg.get("qrs_dur_II", 0), seg.get("qrs_dur_V2", 0),
+                seg.get("t_area_I", 0), seg.get("t_area_II", 0), seg.get("t_area_V2", 0)
             ]
 
-            # --- Slope features ---
             slope_i = seg.get("slope_lead_I", {})
             slope_ii = seg.get("slope_lead_II", {})
             slope_v2 = seg.get("slope_lead_V2", {})
-            slope_features = (
-                list(slope_i.values()) +
-                list(slope_ii.values()) +
-                list(slope_v2.values())
-            )
+            slope_features = list(slope_i.values()) + list(slope_ii.values()) + list(slope_v2.values())
 
-            # --- Demographics ---
             age = seg.get("age", 0)
             sex = 1 if str(seg.get("sex", "M")).upper().startswith("M") else 0
             hr = seg.get("hr", 0)
             onehot_values = [seg.get(name, 0) for name in encoded_features]
 
-            # --- Statistical features ---
-            stats_features = (
-                list(seg['stats_lead_I'].values()) +
-                list(seg['stats_lead_II'].values()) +
-                list(seg['stats_lead_V2'].values())
-            )
+            stats_features = list(seg['stats_lead_I'].values()) + list(seg['stats_lead_II'].values()) + list(seg['stats_lead_V2'].values())
+            freq_features = list(seg['freq_lead_I'].values()) + list(seg['freq_lead_II'].values()) + list(seg['freq_lead_V2'].values())
 
-            # --- Frequency features ---
-            freq_features = (
-                list(seg['freq_lead_I'].values()) +
-                list(seg['freq_lead_II'].values()) +
-                list(seg['freq_lead_V2'].values())
-            )
-
-            # --- Combined feature vector ---
-            features = (
-                intervals +
-                amplitudes +
-                qrs_t_features +
-                slope_features +
-                [age, sex, hr] +
-                onehot_values +
-                stats_features +
-                freq_features
-            )
-
+            features = intervals + amplitudes + qrs_t_features + slope_features + [age, sex, hr] + onehot_values + stats_features + freq_features
             target = seg['other_leads'][target_lead]
+
             if len(target) == 80:
                 X.append(features)
                 y.append(target)
@@ -139,7 +106,6 @@ def build_mlp_model(input_dim):
     model.compile(optimizer='adam', loss='mse', metrics=['mae'])
     return model
 
-# --- Training ---
 with open(metrics_file, 'w') as f:
     for lead in leads_to_predict:
         print(f"\n🔧 Training stacking ensemble for Lead {lead}...")
@@ -159,7 +125,6 @@ with open(metrics_file, 'w') as f:
         X_val_scaled = scaler.transform(X_val)
         X_test_scaled = scaler.transform(X_test)
 
-        # --- Base Models ---
         xgb_model = MultiOutputRegressor(
             XGBRegressor(n_estimators=150, learning_rate=0.1, max_depth=6, verbosity=0)
         )
@@ -174,37 +139,40 @@ with open(metrics_file, 'w') as f:
             verbose=1
         )
 
-        y_pred_mlp_train = mlp_model.predict(X_train_scaled)
-        y_pred_xgb_train = xgb_model.predict(X_train_scaled)
-
-        # --- Meta Model ---
-        meta_X_train = np.hstack([y_pred_mlp_train, y_pred_xgb_train])
-        meta_model = Ridge(alpha=1.0)
-        meta_model.fit(meta_X_train, y_train)
-
-        # --- Predict ---
         y_pred_mlp_test = mlp_model.predict(X_test_scaled)
         y_pred_xgb_test = xgb_model.predict(X_test_scaled)
         meta_X_test = np.hstack([y_pred_mlp_test, y_pred_xgb_test])
+
+        meta_X_train = np.hstack([
+            mlp_model.predict(X_train_scaled),
+            xgb_model.predict(X_train_scaled)
+        ])
+        meta_model = Ridge(alpha=1.0)
+        meta_model.fit(meta_X_train, y_train)
+
         y_pred_stack = meta_model.predict(meta_X_test)
 
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred_stack))
+        mse_per_time = np.mean((y_test - y_pred_stack) ** 2, axis=0)
+        rmse_per_time = np.sqrt(mse_per_time)
+
+        rmse = np.sqrt(np.mean((y_test - y_pred_stack) ** 2))
         r2 = r2_score(y_test, y_pred_stack)
         corr = pearsonr(y_test.flatten(), y_pred_stack.flatten())[0]
 
-        f.write(f"Lead {lead}\nRMSE: {rmse:.4f}\nR^2: {r2:.4f}\nPearson Correlation: {corr:.4f}\n\n")
+        f.write(f"Lead {lead}\nRMSE: {rmse:.4f}\nR^2: {r2:.4f}\nPearson Correlation: {corr:.4f}\nRMSE per time point: {rmse_per_time.tolist()}\n\n")
         print(f"✅ Lead {lead}: RMSE={rmse:.4f}, R²={r2:.4f}, Corr={corr:.4f}")
 
-        plt.figure(figsize=(10, 4))
-        plt.plot(y_test[0], label='Actual', linewidth=2)
-        plt.plot(y_pred_stack[0], label='Stacked', linestyle='--')
-        plt.title(f"Lead {lead}: Actual vs Stacked Prediction")
-        plt.xlabel("Time (samples)")
-        plt.ylabel("Amplitude")
-        plt.legend()
-        plt.grid(True)
+        fig, axes = plt.subplots(2, 5, figsize=(15, 6))
+        for i in range(10):
+            row, col = divmod(i, 5)
+            axes[row, col].plot(y_test[i], label='Actual', linewidth=2)
+            axes[row, col].plot(y_pred_stack[i], label='Predicted', linestyle='--')
+            axes[row, col].set_title(f'Sample {i+1}')
+            axes[row, col].grid(True)
+        axes[0, 0].legend()
+        plt.suptitle(f"Lead {lead}: First 10 Test Predictions")
         plt.tight_layout()
-        plt.savefig(plot_dir / f"lead_{lead}_stacked_prediction.png")
+        plt.savefig(plot_dir / f"lead_{lead}_test_predictions_grid.png")
         plt.close()
 
 print("\n🎉 All stacked ensemble models trained and evaluated.")
